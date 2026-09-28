@@ -52,6 +52,12 @@ final class ChatStore {
         storeURL = directory.appending(path: "conversations.json", directoryHint: .notDirectory)
         conversations = Self.load(from: storeURL)
         draftModel = UserDefaults.standard.string(forKey: SettingsKey.defaultModel) ?? ""
+        // Rouvre la conversation affichée lors de la dernière utilisation.
+        if let last = UserDefaults.standard.string(forKey: SettingsKey.lastConversationID),
+           let id = UUID(uuidString: last),
+           conversations.contains(where: { $0.id == id }) {
+            selectedID = id
+        }
     }
 
     // MARK: - État dérivé

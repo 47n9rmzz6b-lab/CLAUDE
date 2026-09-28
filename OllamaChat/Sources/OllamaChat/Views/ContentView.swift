@@ -20,5 +20,8 @@ struct ContentView: View {
         .task {
             await store.monitorConnection()
         }
+        .onChange(of: store.selectedID) {
+            UserDefaults.standard.set(store.selectedID?.uuidString, forKey: SettingsKey.lastConversationID)
+        }
     }
 }

@@ -9,6 +9,7 @@ enum SettingsKey {
     static let temperature = "temperature"
     static let contextLength = "contextLength"
     static let serifResponses = "serifResponses"
+    static let lastConversationID = "lastConversationID"
 }
 
 enum AppDefaults {

@@ -1,0 +1,150 @@
+# Temporaire : lance l'app sur un Mac avec un vrai Ollama et publie des captures dans le journal.
+name: tmp smoke test
+
+on:
+  push:
+    branches: [claude/peaceful-ramanujan-ebg75y]
+    paths:
+      - "OllamaChat/**"
+      - ".github/workflows/tmp-smoke-test.yml"
+
+jobs:
+  smoke:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: OllamaChat
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: ./scripts/build-app.sh
+
+      - name: Seed conversation
+        run: |
+          mkdir -p "$HOME/Library/Application Support/OllamaChat"
+          python3 - <<'PY'
+          import json, os
+          md = """## Installer Ollama sur Mac
+
+          Voici les étapes, avec un **point important** et une *remarque* sur `ollama serve` ([doc](https://ollama.com)).
+
+          1. Téléchargez l’application
+          2. Lancez-la :
+             - elle démarre le serveur
+             - elle ajoute la commande `ollama`
+          3. Téléchargez un modèle
+
+          ```swift
+          let url = URL(string: "http://localhost:11434/api/tags")!
+          let (data, _) = try await URLSession.shared.data(from: url)
+          ```
+
+          | Modèle | Taille | Usage |
+          |:---|---:|---|
+          | llama3.2 | 2,0 Go | Généraliste |
+          | qwen3:8b | 5,2 Go | Raisonnement |
+
+          > Astuce : Maj+Entrée pour aller à la ligne.
+
+          ---
+
+          Bonne découverte !"""
+          md = "\n".join(line[10:] if line.startswith(" " * 10) else line for line in md.split("\n"))
+          conv = {
+            "id": "11111111-2222-3333-4444-555555555555",
+            "title": "Installer Ollama sur Mac",
+            "model": "qwen3:0.6b",
+            "createdAt": "2026-09-28T10:00:00Z",
+            "updatedAt": "2026-09-28T10:05:00Z",
+            "messages": [
+              {"id": "AAAAAAAA-0000-0000-0000-000000000001", "role": "user", "content": "Comment installer Ollama sur mon Mac ?", "thinking": "", "createdAt": "2026-09-28T10:00:00Z"},
+              {"id": "AAAAAAAA-0000-0000-0000-000000000002", "role": "assistant", "content": md, "thinking": "L'utilisateur veut installer Ollama. Je vais donner les étapes.", "createdAt": "2026-09-28T10:00:05Z", "model": "qwen3:0.6b", "stats": {"tokens": 240, "seconds": 6.2}},
+            ],
+          }
+          older = {
+            "id": "66666666-2222-3333-4444-555555555555", "title": "Recette de crêpes", "model": "llama3.2",
+            "createdAt": "2026-09-20T10:00:00Z", "updatedAt": "2026-09-20T10:00:00Z",
+            "messages": [{"id": "AAAAAAAA-0000-0000-0000-000000000003", "role": "user", "content": "Une recette de crêpes ?", "thinking": "", "createdAt": "2026-09-20T10:00:00Z"}],
+          }
+          path = os.path.expanduser("~/Library/Application Support/OllamaChat/conversations.json")
+          json.dump([conv, older], open(path, "w"), ensure_ascii=False)
+          PY
+
+      - name: Screenshot helper
+        run: |
+          cat > /tmp/shot.sh <<'SH'
+          #!/bin/bash
+          name="$1"
+          screencapture -x "/tmp/$name.png" || { echo "screencapture failed"; exit 0; }
+          sips -Z 1300 -s format jpeg -s formatOptions 55 "/tmp/$name.png" --out "/tmp/$name.jpg" >/dev/null
+          echo "=====BEGIN $name $(stat -f%z /tmp/$name.jpg)"
+          base64 -i "/tmp/$name.jpg" | fold -w 3000 | sed "s/^/IMG:/"
+          echo "=====END $name"
+          SH
+          chmod +x /tmp/shot.sh
+          system_profiler SPDisplaysDataType | grep -i resolution || true
+
+      - name: Launch without Ollama
+        run: |
+          open "build/Ollama Chat.app" --args -lastConversationID 11111111-2222-3333-4444-555555555555
+          sleep 8
+          pgrep -x OllamaChat
+          /tmp/shot.sh 1-conversation-sans-ollama
+
+      - name: Start Ollama with a small model
+        run: |
+          brew install ollama >/dev/null
+          (ollama serve > /tmp/ollama.log 2>&1 &)
+          sleep 4
+          ollama pull qwen3:0.6b > /dev/null
+          ollama list
+          sleep 8
+          pgrep -x OllamaChat
+          /tmp/shot.sh 2-conversation-connectee
+
+      - name: Send a message through the UI
+        continue-on-error: true
+        run: |
+          osascript -e 'tell application "Ollama Chat" to activate'
+          sleep 1
+          osascript -e 'tell application "System Events" to keystroke "In two short sentences, what is Ollama? Use one bullet list."'
+          sleep 1
+          /tmp/shot.sh 3-saisie
+          osascript -e 'tell application "System Events" to key code 36'
+          sleep 6
+          /tmp/shot.sh 4-generation
+          sleep 50
+          pgrep -x OllamaChat
+          /tmp/shot.sh 5-reponse
+
+      - name: New conversation, model manager, settings
+        continue-on-error: true
+        run: |
+          osascript -e 'tell application "System Events" to keystroke "n" using command down'
+          sleep 2
+          /tmp/shot.sh 6-accueil
+          osascript -e 'tell application "System Events" to keystroke "m" using {command down, shift down}'
+          sleep 2
+          /tmp/shot.sh 7-modeles
+          osascript -e 'tell application "System Events" to key code 53'
+          sleep 1
+          osascript -e 'tell application "System Events" to keystroke "," using command down'
+          sleep 2
+          /tmp/shot.sh 8-reglages
+
+      - name: Saved data and diagnostics
+        if: always()
+        run: |
+          pgrep -x OllamaChat || echo "APP NOT RUNNING"
+          python3 - <<'PY'
+          import json, os
+          path = os.path.expanduser("~/Library/Application Support/OllamaChat/conversations.json")
+          for c in json.load(open(path)):
+              print("##", c["title"], "|", c["model"])
+              for m in c["messages"]:
+                  print("  -", m["role"], "| thinking:", len(m.get("thinking", "")), "| error:", m.get("errorText"), "| stats:", m.get("stats"))
+                  print("    ", repr(m["content"][:400]))
+          PY
+          ls ~/Library/Logs/DiagnosticReports/ | grep -i ollama && cat ~/Library/Logs/DiagnosticReports/OllamaChat* | head -80 || true
+          tail -20 /tmp/ollama.log || true
