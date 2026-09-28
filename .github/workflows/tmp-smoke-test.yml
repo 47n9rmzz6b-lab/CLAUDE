@@ -73,8 +73,9 @@ jobs:
           json.dump([conv, older], open(path, "w"), ensure_ascii=False)
           PY
 
-      - name: Screenshot helper
+      - name: Helpers
         run: |
+          cp "$HOME/Library/Application Support/OllamaChat/conversations.json" /tmp/seed.json
           mkdir -p "$GITHUB_WORKSPACE/OllamaChat/.smoke"
           cat > /tmp/shot.sh <<'SH'
           #!/bin/bash
@@ -84,15 +85,55 @@ jobs:
           echo "captured $name"
           SH
           chmod +x /tmp/shot.sh
-          system_profiler SPDisplaysDataType | grep -i resolution || true
+          cat > /tmp/mouse.swift <<'SW'
+          import CoreGraphics
+          import Foundation
+          let args = CommandLine.arguments
+          let point = CGPoint(x: Double(args[2])!, y: Double(args[3])!)
+          let source = CGEventSource(stateID: .hidSystemState)
+          func post(_ event: CGEvent?) { event?.post(tap: .cghidEventTap); usleep(80_000) }
+          post(CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left))
+          if args[1] == "click" {
+              post(CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left))
+              post(CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left))
+          } else {
+              for _ in 0..<6 {
+                  post(CGEvent(scrollWheelEvent2Source: source, units: .line, wheelCount: 1, wheel1: Int32(args[4])!, wheel2: 0, wheel3: 0))
+              }
+          }
+          SW
+          swiftc -O /tmp/mouse.swift -o /tmp/mouse
+          cat > /tmp/winpos.sh <<'SH'
+          #!/bin/bash
+          osascript -e 'tell application "System Events" to tell process "OllamaChat" to get position of window 1' | tr -d ','
+          SH
+          chmod +x /tmp/winpos.sh
 
-      - name: Launch without Ollama
+      - name: Launch variants (without Ollama)
         run: |
-          open "build/Ollama Chat.app" --args -lastConversationID 11111111-2222-3333-4444-555555555555
-          sleep 8
-          pgrep -x OllamaChat
-          osascript -e 'tell application "System Events" to tell process "OllamaChat" to get {position, size} of window 1' || true
-          /tmp/shot.sh 1-lancement
+          ID=11111111-2222-3333-4444-555555555555
+          variant() {
+            local name="$1"; shift
+            cp /tmp/seed.json "$HOME/Library/Application Support/OllamaChat/conversations.json"
+            defaults delete com.ollamachat.desktop lastConversationID 2>/dev/null || true
+            open "build/Ollama Chat.app" --args "$@"
+            sleep 4
+            /tmp/shot.sh "v-$name-a"
+            sleep 5
+            /tmp/shot.sh "v-$name-b"
+            osascript -e 'tell application "Ollama Chat" to quit' || true
+            sleep 2
+            pkill -x OllamaChat || true
+            sleep 1
+          }
+          variant base -lastConversationID $ID -debugDumpViews YES
+          variant norestore
+          variant defer -lastConversationID $ID -debugDeferRestore YES
+          variant nofocus -lastConversationID $ID -debugNoFocus YES
+          variant noscroll -lastConversationID $ID -debugNoInitialScroll YES
+          variant nosubtitle -lastConversationID $ID -debugNoSubtitle YES
+          variant noactivate -lastConversationID $ID -debugNoActivate YES
+          cp /tmp/ollamachat-views.txt "$GITHUB_WORKSPACE/OllamaChat/.smoke/views.txt" || true
 
       - name: Start Ollama with a small model
         run: |
@@ -101,64 +142,61 @@ jobs:
           sleep 4
           ollama pull qwen3:0.6b > /dev/null
           ollama list
-          # Charge le modèle en mémoire pour que la réponse démarre vite pendant le test.
           curl -s http://localhost:11434/api/generate -d '{"model":"qwen3:0.6b","prompt":"hi","stream":false,"think":false}' > /dev/null || true
-          sleep 6
-          pgrep -x OllamaChat
-          /tmp/shot.sh 2-connecte
 
-      - name: Switch conversations with the mouse
+      - name: Launch, switch conversations
         continue-on-error: true
         run: |
-          read -r X Y <<<"$(osascript -e 'tell application "System Events" to tell process "OllamaChat" to get position of window 1' | tr -d ',')"
+          cp /tmp/seed.json "$HOME/Library/Application Support/OllamaChat/conversations.json"
+          open "build/Ollama Chat.app" --args -lastConversationID 11111111-2222-3333-4444-555555555555
+          sleep 8
+          /tmp/shot.sh 10-lancement
+          read -r X Y <<<"$(/tmp/winpos.sh)"
           echo "window at $X $Y"
-          osascript -e 'tell application "Ollama Chat" to activate'
-          sleep 1
-          osascript -e "tell application \"System Events\" to tell process \"OllamaChat\" to click at {$((X + 90)), $((Y + 226))}"
+          /tmp/mouse click $((X + 90)) $((Y + 226))
           sleep 2
-          /tmp/shot.sh 3-autre-conversation
-          osascript -e "tell application \"System Events\" to tell process \"OllamaChat\" to click at {$((X + 90)), $((Y + 166))}"
+          /tmp/shot.sh 11-autre-conversation
+          /tmp/mouse click $((X + 90)) $((Y + 166))
           sleep 2
-          /tmp/shot.sh 4-retour
+          /tmp/shot.sh 12-retour
 
-      - name: Send a message through the UI
+      - name: Send, follow, scroll up
         continue-on-error: true
         run: |
+          read -r X Y <<<"$(/tmp/winpos.sh)"
           osascript -e 'tell application "Ollama Chat" to activate'
           sleep 1
-          osascript -e 'tell application "System Events" to keystroke "What is the capital of France? Answer in one short sentence."'
-          osascript -e 'tell application "System Events" to key code 36 using shift down'
-          osascript -e 'tell application "System Events" to keystroke "Thanks!"'
-          sleep 1
-          /tmp/shot.sh 5-saisie-multiligne
+          osascript -e 'tell application "System Events" to keystroke "List five French cities, one per line, with one short sentence about each."'
           osascript -e 'tell application "System Events" to key code 36'
-          sleep 12
-          /tmp/shot.sh 6-generation
+          sleep 4
+          /tmp/shot.sh 13-envoye
+          sleep 30
+          /tmp/shot.sh 14-suivi
+          /tmp/mouse scroll $((X + 600)) $((Y + 300)) 8
+          sleep 6
+          /tmp/shot.sh 15-remonte
           for i in $(seq 1 60); do
             python3 - <<'PY' && break
           import json, os, sys
           path = os.path.expanduser("~/Library/Application Support/OllamaChat/conversations.json")
-          msgs = json.load(open(path))[0]["messages"]
-          last = msgs[-1]
+          last = json.load(open(path))[0]["messages"][-1]
           sys.exit(0 if last["role"] == "assistant" and (last.get("stats") or last.get("errorText")) else 1)
           PY
             sleep 3
           done
-          sleep 2
-          pgrep -x OllamaChat
-          /tmp/shot.sh 7-reponse
+          /tmp/shot.sh 16-fin
 
       - name: New conversation and dark mode
         continue-on-error: true
         run: |
           osascript -e 'tell application "System Events" to keystroke "n" using command down'
           sleep 2
-          /tmp/shot.sh 8-accueil
+          /tmp/shot.sh 17-accueil
           osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
-          read -r X Y <<<"$(osascript -e 'tell application "System Events" to tell process "OllamaChat" to get position of window 1' | tr -d ',')"
-          osascript -e "tell application \"System Events\" to tell process \"OllamaChat\" to click at {$((X + 90)), $((Y + 166))}"
+          read -r X Y <<<"$(/tmp/winpos.sh)"
+          /tmp/mouse click $((X + 90)) $((Y + 166))
           sleep 3
-          /tmp/shot.sh 9-sombre
+          /tmp/shot.sh 18-sombre
 
       - name: Saved data and diagnostics
         if: always()

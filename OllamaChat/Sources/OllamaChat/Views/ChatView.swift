@@ -35,7 +35,7 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.background)
         .navigationTitle(store.selectedConversation?.title ?? "Nouvelle conversation")
-        .navigationSubtitle(store.currentModel)
+        .navigationSubtitle(UserDefaults.standard.bool(forKey: "debugNoSubtitle") ? "" : store.currentModel) // SMOKE-DEBUG
     }
 }
 
