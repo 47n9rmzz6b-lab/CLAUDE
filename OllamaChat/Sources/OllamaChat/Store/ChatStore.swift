@@ -40,6 +40,10 @@ final class ChatStore {
     var pull: PullState?
     var modelError: String?
 
+    /// La sélection vient de changer au clavier dans la barre latérale (flèches) : la zone de saisie
+    /// ne prend alors pas le focus, pour qu’on puisse continuer à parcourir la liste.
+    @ObservationIgnored var selectionChangedWithKeyboard = false
+
     @ObservationIgnored private var generationTask: Task<Void, Never>?
     @ObservationIgnored private var pullTask: Task<Void, Never>?
     private let storeURL: URL
@@ -83,6 +87,7 @@ final class ChatStore {
     // MARK: - Conversations
 
     func newConversation() {
+        selectionChangedWithKeyboard = false
         selectedID = nil
     }
 
@@ -121,6 +126,7 @@ final class ChatStore {
         } else {
             let conversation = Conversation(title: Self.makeTitle(from: text), model: currentModel)
             conversations.insert(conversation, at: 0)
+            selectionChangedWithKeyboard = false
             selectedID = conversation.id
             conversationID = conversation.id
         }

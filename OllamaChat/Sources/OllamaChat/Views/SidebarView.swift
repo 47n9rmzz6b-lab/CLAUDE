@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SidebarView: View {
@@ -11,9 +12,14 @@ struct SidebarView: View {
     @State private var isConfirmingDelete = false
 
     var body: some View {
-        @Bindable var store = store
-
-        List(selection: $store.selectedID) {
+        List(selection: Binding(
+            get: { store.selectedID },
+            set: { newValue in
+                let event = NSApp.currentEvent?.type
+                store.selectionChangedWithKeyboard = event == .keyDown || event == .keyUp
+                store.selectedID = newValue
+            }
+        )) {
             ForEach(sections) { section in
                 Section(section.title) {
                     ForEach(section.conversations) { conversation in

@@ -5,8 +5,8 @@ struct ComposerView: View {
     @Environment(ChatStore.self) private var store
 
     @Binding var text: String
-    /// Prend le focus clavier même si la liste des conversations l’avait.
-    let forceFocus: Bool
+    /// Prend le focus clavier à l’affichage.
+    let takesFocus: Bool
     /// La réponse en cours de génération appartient à cette conversation (bouton « Arrêter »).
     let isGeneratingHere: Bool
     let onSend: (String) -> Void
@@ -30,7 +30,7 @@ struct ComposerView: View {
                         .foregroundStyle(.tertiary)
                         .allowsHitTesting(false)
                 }
-                GrowingTextView(text: $text, height: $editorHeight, forceFocus: forceFocus, onSubmit: submit)
+                GrowingTextView(text: $text, height: $editorHeight, takesFocus: takesFocus, onSubmit: submit)
                     .frame(height: editorHeight)
             }
 

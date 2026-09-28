@@ -71,7 +71,7 @@ struct MessageListView: View {
             }
             .onAppear {
                 startWatchingUserScroll()
-                scrollToBottom(proxy)
+                scrollToBottom(proxy, settling: true)
             }
             .onDisappear {
                 if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
@@ -79,7 +79,11 @@ struct MessageListView: View {
             }
             .onChange(of: conversation.messages.count) {
                 followsBottom = true
-                scrollToBottom(proxy, animated: true)
+                scrollToBottom(proxy, animated: true, settling: true)
+            }
+            .onChange(of: viewportHeight) {
+                // Bandeau qui apparaît, fenêtre redimensionnée : on garde la fin du fil en vue.
+                if followsBottom { scrollToBottom(proxy) }
             }
             .onChange(of: lastMessageLength) {
                 if followsBottom { scrollToBottom(proxy) }
@@ -106,16 +110,20 @@ struct MessageListView: View {
     }
 
     /// Défile jusqu’en bas une fois la mise en page faite : les lignes qui viennent
-    /// d’apparaître ou de grandir ont alors leur hauteur définitive.
-    private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = false) {
+    /// d’apparaître ou de grandir ont alors leur hauteur définitive. `settling` répète
+    /// l’opération pendant que la mise en page se stabilise (ouverture, nouveau message).
+    private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = false, settling: Bool = false) {
         Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(16))
-            if animated {
-                withAnimation(.easeOut(duration: 0.2)) {
+            for delay in settling ? [16, 150, 400] : [16] {
+                try? await Task.sleep(for: .milliseconds(delay))
+                guard followsBottom else { return }
+                if animated {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(bottomID, anchor: .bottom)
+                    }
+                } else {
                     proxy.scrollTo(bottomID, anchor: .bottom)
                 }
-            } else {
-                proxy.scrollTo(bottomID, anchor: .bottom)
             }
         }
     }

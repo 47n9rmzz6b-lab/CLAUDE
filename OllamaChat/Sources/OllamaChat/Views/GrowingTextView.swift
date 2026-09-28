@@ -8,7 +8,7 @@ import SwiftUI
 struct GrowingTextView: NSViewRepresentable {
     @Binding var text: String
     @Binding var height: CGFloat
-    var forceFocus = false
+    var takesFocus = true
     var font: NSFont = .systemFont(ofSize: 14)
     var minHeight: CGFloat = 20
     var maxHeight: CGFloat = 220
@@ -20,7 +20,7 @@ struct GrowingTextView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSScrollView {
         let textView = ComposerTextView(usingTextLayoutManager: false)
-        textView.forceFocus = forceFocus
+        textView.takesFocus = takesFocus
         textView.delegate = context.coordinator
         textView.font = font
         textView.textColor = .labelColor
@@ -114,22 +114,14 @@ struct GrowingTextView: NSViewRepresentable {
 }
 
 private final class ComposerTextView: NSTextView {
-    var forceFocus = false
+    var takesFocus = true
     private var didAttemptFocus = false
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        guard let window, !didAttemptFocus else { return }
+        guard let window, takesFocus, !didAttemptFocus else { return }
         didAttemptFocus = true
-        // Après un clic sur une conversation, on peut écrire tout de suite ; mais on laisse le focus
-        // à la liste des conversations quand on la parcourt au clavier (flèches). La vue peut n’être
-        // créée qu’une fois la touche relâchée : keyUp compte donc aussi.
-        let eventType = NSApp.currentEvent?.type
-        let browsingListWithKeyboard = window.firstResponder is NSTableView
-            && (eventType == .keyDown || eventType == .keyUp)
-        if forceFocus || !browsingListWithKeyboard {
-            window.makeFirstResponder(self)
-        }
+        window.makeFirstResponder(self)
     }
 }
 

@@ -19,7 +19,7 @@ struct ChatView: View {
                         ConnectionBanner()
                         ComposerView(
                             text: $draft,
-                            forceFocus: false,
+                            takesFocus: !store.selectionChangedWithKeyboard,
                             isGeneratingHere: store.generatingID == conversation.id
                         ) { store.send($0) }
                     }
@@ -54,7 +54,7 @@ private struct WelcomeView: View {
                     .font(.system(size: 34, design: .serif))
             }
             VStack(spacing: 10) {
-                ComposerView(text: $draft, forceFocus: true, isGeneratingHere: false) { store.send($0) }
+                ComposerView(text: $draft, takesFocus: true, isGeneratingHere: false) { store.send($0) }
                 ConnectionBanner()
             }
             .frame(maxWidth: 680)
