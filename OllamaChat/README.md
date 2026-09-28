@@ -126,7 +126,7 @@ L’application ne pilote pas le Terminal. Elle parle directement au serveur Oll
 - `/api/tags`, pour la liste des modèles ;
 - `/api/pull` et `/api/delete`, pour télécharger et supprimer des modèles.
 
-Toutes les requêtes d’une conversation (réponses, titre, souvenirs) utilisent la même taille de contexte, pour qu’Ollama n’ait pas à recharger le modèle entre deux.
+Les réponses et le titre d’une conversation utilisent la même taille de contexte, et la recherche de souvenirs celle de la conversation affichée : Ollama n’a pas à recharger le modèle entre deux. Une réponse passe toujours avant la recherche de souvenirs, qui reprend ensuite.
 
 Vos données restent sur votre Mac, dans `~/Library/Application Support/OllamaChat/` :
 
