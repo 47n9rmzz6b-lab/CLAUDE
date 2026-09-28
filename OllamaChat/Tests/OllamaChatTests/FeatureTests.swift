@@ -40,6 +40,13 @@ final class MemoryTests: XCTestCase {
         XCTAssertEqual(store.textsForPrompt(), ["L'utilisateur s'appelle Anka."])
     }
 
+    func testFirstPersonMemoriesAreQuoted() {
+        XCTAssertEqual(MemoryText.forPrompt("Je travaille de nuit."), "L’utilisateur a dit : « Je travaille de nuit. »")
+        XCTAssertEqual(MemoryText.forPrompt("J’ai un Mac mini M4."), "L’utilisateur a dit : « J’ai un Mac mini M4. »")
+        XCTAssertEqual(MemoryText.forPrompt("L'utilisateur a un chat."), "L'utilisateur a un chat.")
+        XCTAssertEqual(MemoryText.forPrompt("Jean est son frère."), "Jean est son frère.")
+    }
+
     func testExtractionParsing() {
         XCTAssertEqual(
             MemoryExtraction.parse(#"{"souvenirs": ["L'utilisateur est infirmier.", "court"]}"#),
@@ -144,6 +151,36 @@ final class DocumentTests: XCTestCase {
         XCTAssertEqual(excerpts.count, DocumentService.topK)
         XCTAssertEqual(excerpts.first?.page, 14)
         XCTAssertFalse(excerpts.first?.isFullText ?? true)
+    }
+
+    func testVectorsRankByMeaningAcrossDocuments() {
+        let filler = String(repeating: "Texte sans rapport avec la question posée. ", count: 30)
+        var chunks = (0..<12).map { DocumentChunk(text: filler + "\($0)", page: $0 + 1) }
+        chunks[4] = DocumentChunk(text: "Les dépenses prévues pour l’initiative atteignent douze mille euros.", page: 5)
+        var vectors = [[Float]](repeating: [0, 1], count: 12)
+        vectors[4] = [1, 0]
+        let long = DocumentRef(name: "rapport.pdf", status: .ready)
+        let short = DocumentRef(name: "notes.txt", status: .ready)
+        let indexes = [
+            long.id: DocumentIndex(chunks: chunks, vectors: vectors, embeddingModel: "m"),
+            short.id: DocumentIndex(chunks: [DocumentChunk(text: "Le chat dort sur le canapé.", page: nil)], vectors: [[0, 1]], embeddingModel: "m"),
+        ]
+        let excerpts = DocumentService.excerpts(for: "Quel est le budget ?", documents: [long, short], indexes: indexes, questionVector: ["m": [1, 0]])
+        XCTAssertEqual(excerpts.first?.page, 5, "le passage le plus proche par le sens, sans mot commun")
+        XCTAssertEqual(excerpts.first?.documentName, "rapport.pdf")
+    }
+
+    func testMixedIndexesFallBackToKeywords() {
+        let filler = String(repeating: "Texte sans rapport avec la question posée. ", count: 30)
+        let chunks = (0..<12).map { DocumentChunk(text: filler + "\($0)", page: $0 + 1) }
+        let withVectors = DocumentRef(name: "rapport.pdf", status: .ready)
+        let withoutVectors = DocumentRef(name: "notes.txt", status: .ready)
+        let indexes = [
+            withVectors.id: DocumentIndex(chunks: chunks, vectors: [[Float]](repeating: [1, 0], count: 12), embeddingModel: "m"),
+            withoutVectors.id: DocumentIndex(chunks: [DocumentChunk(text: "Le budget du projet Hibiscus est de 12 000 euros.", page: nil)]),
+        ]
+        let excerpts = DocumentService.excerpts(for: "budget du projet Hibiscus", documents: [withVectors, withoutVectors], indexes: indexes, questionVector: ["m": [1, 0]])
+        XCTAssertEqual(excerpts.first?.documentName, "notes.txt", "mêmes règles pour tous : les mots-clés")
     }
 
     func testExtractPlainText() throws {

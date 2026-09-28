@@ -7,8 +7,11 @@ enum TokenEstimator {
     static let tokensPerMessage = 4
 
     static func tokens(in text: String) -> Int {
-        guard !text.isEmpty else { return 0 }
-        return Int((Double(text.unicodeScalars.count) / 3.5).rounded(.up))
+        tokens(forCharacterCount: text.unicodeScalars.count)
+    }
+
+    static func tokens(forCharacterCount count: Int) -> Int {
+        count > 0 ? Int((Double(count) / 3.5).rounded(.up)) : 0
     }
 }
 

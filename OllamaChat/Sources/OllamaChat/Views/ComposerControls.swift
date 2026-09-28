@@ -253,7 +253,7 @@ struct ContextGauge: View {
 
     var body: some View {
         let used = store.estimatedPromptTokens(for: store.selectedConversation, draft: draft)
-        let limit = store.contextLength(model: store.currentModel, webSearch: store.currentWebSearch, hasDocuments: !store.currentDocuments.isEmpty)
+        let limit = store.contextLength(for: store.selectedConversation)
         let fraction = limit.map { min(1, Double(used) / Double(max($0, 1))) }
         Button {
             showDetails.toggle()

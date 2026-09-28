@@ -75,13 +75,25 @@ extension ChatStore {
         return length
     }
 
+    /// Taille de contexte d’une conversation (ou de l’écran « Nouvelle conversation »). Toutes ses
+    /// requêtes (réponses, titre, mémoire) utilisent la même : sinon Ollama recharge le modèle.
+    func contextLength(for conversation: Conversation?) -> Int? {
+        let documents = conversation?.documents ?? draftDocuments
+        return contextLength(
+            model: conversation?.model ?? draftModel,
+            webSearch: conversation?.webSearch ?? draftWebSearch,
+            hasDocuments: documents.contains { $0.status != .failed }
+        )
+    }
+
     /// Nombre de jetons estimé de ce qui sera envoyé au modèle (hors réponse à venir).
     func estimatedPromptTokens(for conversation: Conversation?, draft: String = "") -> Int {
+        let documents = conversation?.documents ?? draftDocuments
         let context = promptContext(
             profileID: conversation?.profileID ?? draftProfileID,
             webSearch: conversation?.webSearch ?? draftWebSearch,
             model: conversation?.model ?? draftModel,
-            documents: conversation?.documents ?? []
+            documents: documents
         )
         var total = TokenEstimator.tokens(in: PromptBuilder.systemPrompt(context) ?? "")
         for message in conversation?.messages ?? [] {
@@ -89,9 +101,7 @@ extension ChatStore {
             total += TokenEstimator.tokens(in: content) + TokenEstimator.tokensPerMessage
             total += message.images.count * TokenEstimator.tokensPerImage
         }
-        if let documents = conversation?.documents, !documents.isEmpty {
-            total += DocumentService.excerptBudgetTokens(for: documents)
-        }
+        total += DocumentService.excerptBudgetTokens(for: documents)
         total += TokenEstimator.tokens(in: draft)
         return total
     }
@@ -151,19 +161,20 @@ extension ChatStore {
         context.responseStyle = defaults.string(forKey: SettingsKey.responseStyle) ?? ""
         context.memories = memoriesForPrompt()
         context.webSearch = webSearch ? webSearchMode(for: model) : .none
-        context.documentNames = documents.filter { $0.status == .ready }.map(\.name)
+        context.documentNames = documents.filter { $0.status != .failed }.map(\.name)
         return context
     }
 
     func makeRequest(for conversation: Conversation) -> ReplyRequest {
         let model = conversation.model
         let modelInfo = info(for: model)
-        let readyDocuments = conversation.documents.filter { $0.status == .ready }
+        // Les documents encore en lecture sont attendus au moment de la réponse (prepareContext).
+        let documents = conversation.documents.filter { $0.status != .failed }
         let context = promptContext(
             profileID: conversation.profileID,
             webSearch: conversation.webSearch,
             model: model,
-            documents: readyDocuments
+            documents: documents
         )
 
         var history: [OllamaClient.Message] = []
@@ -196,7 +207,7 @@ extension ChatStore {
         } else {
             options.temperature = context.profile.temperature
         }
-        options.numCtx = contextLength(model: model, webSearch: conversation.webSearch, hasDocuments: !readyDocuments.isEmpty)
+        options.numCtx = contextLength(for: conversation)
 
         return ReplyRequest(
             model: model,
@@ -204,7 +215,7 @@ extension ChatStore {
             options: options.isEmpty ? nil : options,
             think: thinkParameter(for: model, setting: conversation.thinking),
             webSearch: context.webSearch,
-            documents: readyDocuments,
+            documents: documents,
             question: question
         )
     }

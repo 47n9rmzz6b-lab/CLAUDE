@@ -30,8 +30,18 @@ extension ChatStore {
         var preface: [String] = []
 
         if !request.documents.isEmpty, !request.question.isEmpty {
-            let stepID = addStep(.documents, detail: "Consultation des documents", in: conversationID, messageID: messageID)
-            let excerpts = await documentExcerpts(for: request.question, documents: request.documents)
+            // Un document joint à l’instant peut être encore en cours de lecture : on l’attend.
+            var documents = request.documents
+            let waiting = documents.contains { $0.status == .indexing }
+            let stepID = addStep(.documents, detail: waiting ? "Lecture des documents…" : "Consultation des documents", in: conversationID, messageID: messageID)
+            while true {
+                let latest = conversation(conversationID)?.documents ?? []
+                documents = request.documents.compactMap { document in latest.first { $0.id == document.id } }
+                guard documents.contains(where: { $0.status == .indexing }) else { break }
+                try await Task.sleep(for: .milliseconds(300))
+            }
+            documents = documents.filter { $0.status == .ready }
+            let excerpts = await documentExcerpts(for: request.question, documents: documents)
             let sources = excerpts.map { excerpt -> Source in
                 var detail = excerpt.isFullText ? "texte intégral" : nil
                 if let page = excerpt.page { detail = "page \(page)" }

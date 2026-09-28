@@ -136,15 +136,22 @@ enum DocumentService {
         let pages = try extractPages(from: url)
         let chunks = chunk(pages: pages)
         var index = DocumentIndex(chunks: chunks, vectors: nil, embeddingModel: nil)
-        if let client, let embeddingModel, !embeddingModel.isEmpty, index.characterCount > fullTextLimit {
-            var vectors: [[Float]] = []
-            for batchStart in stride(from: 0, to: chunks.count, by: 16) {
-                let batch = chunks[batchStart..<min(batchStart + 16, chunks.count)].map(\.text)
-                vectors.append(contentsOf: try await client.embed(model: embeddingModel, inputs: batch))
-            }
-            if vectors.count == chunks.count {
-                index.vectors = vectors
-                index.embeddingModel = embeddingModel
+        // Tous les documents sont vectorisés, même courts : joints à d’autres, ils se classent de la même façon.
+        if let client, let embeddingModel, !embeddingModel.isEmpty {
+            do {
+                var vectors: [[Float]] = []
+                for batchStart in stride(from: 0, to: chunks.count, by: 16) {
+                    let batch = chunks[batchStart..<min(batchStart + 16, chunks.count)].map(\.text)
+                    vectors.append(contentsOf: try await client.embed(model: embeddingModel, inputs: batch))
+                }
+                if vectors.count == chunks.count {
+                    index.vectors = vectors
+                    index.embeddingModel = embeddingModel
+                }
+            } catch {
+                // Sans vecteurs, la recherche se fait par mots-clés : le document reste utilisable.
+                if Task.isCancelled { throw error }
+                NSLog("OllamaChat : vectorisation impossible avec \(embeddingModel) : \(error)")
             }
         }
         return (index, pages.count > 1 ? pages.count : nil)
@@ -169,19 +176,30 @@ enum DocumentService {
                 excerpts.append(DocumentExcerpt(tag: "", documentName: document.name, page: nil, text: text, isFullText: true))
             }
         } else {
-            var scored: [(score: Double, document: DocumentRef, chunk: DocumentChunk)] = []
+            // Tous les passages de tous les documents sont classés ensemble, avec une même mesure.
+            var candidates: [(document: DocumentRef, chunk: DocumentChunk, vector: [Float]?)] = []
             for (document, index) in available {
-                let ranked: [(Int, Double)]
-                if let vectors = index.vectors, let model = index.embeddingModel, let query = questionVector[model] {
-                    ranked = vectors.enumerated().map { ($0.offset, Double(cosine($0.element, query))) }
-                } else {
-                    ranked = bm25Scores(query: question, chunks: index.chunks)
-                }
-                for (position, score) in ranked.sorted(by: { $0.1 > $1.1 }).prefix(topK) {
-                    scored.append((score, document, index.chunks[position]))
+                let vectors = index.vectors?.count == index.chunks.count ? index.vectors : nil
+                for (position, chunk) in index.chunks.enumerated() {
+                    candidates.append((document, chunk, vectors?[position]))
                 }
             }
-            for item in scored.sorted(by: { $0.score > $1.score }).prefix(topK) {
+            let keyword = bm25Scores(query: question, chunks: candidates.map { $0.chunk }).map { $0.1 }
+            let bestKeyword = keyword.max() ?? 0
+            // Par le sens si tous les passages ont été vectorisés par le même modèle, complété par
+            // les mots-clés (noms propres, nombres) ; sinon par les mots-clés seuls.
+            var query: [Float]?
+            let models = Set(available.map { $0.1.embeddingModel })
+            if models.count == 1, let model = models.first ?? nil, candidates.allSatisfy({ $0.vector != nil }) {
+                query = questionVector[model]
+            }
+            let scores = candidates.indices.map { position -> Double in
+                let keywordScore = bestKeyword > 0 ? keyword[position] / bestKeyword : 0
+                guard let query, let vector = candidates[position].vector else { return keywordScore }
+                return 0.7 * Double(cosine(vector, query)) + 0.3 * keywordScore
+            }
+            for position in candidates.indices.sorted(by: { scores[$0] > scores[$1] }).prefix(topK) {
+                let item = candidates[position]
                 excerpts.append(DocumentExcerpt(tag: "", documentName: item.document.name, page: item.chunk.page, text: item.chunk.text, isFullText: false))
             }
         }
@@ -209,7 +227,7 @@ enum DocumentService {
     static func excerptBudgetTokens(for documents: [DocumentRef]) -> Int {
         let characters = documents.filter { $0.status == .ready }.reduce(0) { $0 + $1.characterCount }
         guard characters > 0 else { return 0 }
-        return TokenEstimator.tokens(in: String(repeating: "x", count: min(characters, max(fullTextLimit, topK * chunkSize))))
+        return TokenEstimator.tokens(forCharacterCount: min(characters, max(fullTextLimit, topK * chunkSize)))
     }
 
     // MARK: - Classement

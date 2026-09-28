@@ -164,9 +164,11 @@ struct ContextOverflowBanner: View {
 
     var body: some View {
         let used = store.estimatedPromptTokens(for: store.selectedConversation, draft: draft)
-        if let limit = store.contextLength(model: store.currentModel, webSearch: store.currentWebSearch, hasDocuments: !store.currentDocuments.isEmpty),
+        if let limit = store.contextLength(for: store.selectedConversation),
            used > Int(Double(limit) * 0.9) {
-            let next = ContextGauge.sizes.first { $0 > limit && $0 >= used + 1024 }
+            // Pas de taille plus grande que ce que le modèle accepte.
+            let modelMaximum = store.info(for: store.currentModel).maxContextLength ?? .max
+            let next = ContextGauge.sizes.first { $0 > limit && $0 >= used + 1024 && $0 <= modelMaximum }
             InfoBanner(
                 icon: "gauge.with.dots.needle.100percent",
                 tint: .orange,

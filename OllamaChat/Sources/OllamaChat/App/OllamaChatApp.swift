@@ -48,13 +48,14 @@ struct OllamaChatApp: App {
                     get: { store.currentThinking != .off },
                     set: { store.setThinking($0 ? .on : .off) }
                 ))
-                .keyboardShortcut("t", modifiers: [.command, .option])
+                // ⌥⌘T et ⌥⌘W sont pris par macOS (barre d’outils, « Tout fermer »).
+                .keyboardShortcut("r", modifiers: [.command, .option])
                 .disabled(!store.info(for: store.currentModel).supportsThinking)
                 Toggle("Recherche web", isOn: Binding(
                     get: { store.currentWebSearch },
                     set: { store.setWebSearch($0) }
                 ))
-                .keyboardShortcut("w", modifiers: [.command, .option])
+                .keyboardShortcut("i", modifiers: [.command, .option])
                 Menu("Profil de réponse") {
                     ForEach(Array(ResponseProfile.all.enumerated()), id: \.element.id) { position, profile in
                         Button(profile.name) { store.selectProfile(profile.id) }

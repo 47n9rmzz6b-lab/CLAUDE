@@ -145,6 +145,14 @@ enum MemoryText {
         return String(result.prefix(300))
     }
 
+    /// Souvenir tel qu’il est donné au modèle : une phrase à la première personne (« Retiens que je… »)
+    /// est rapportée comme une parole de l’utilisateur, pour que le modèle ne se l’attribue pas.
+    static func forPrompt(_ text: String) -> String {
+        let firstWord = text.prefix { $0.isLetter }.lowercased()
+        let firstPerson: Set<String> = ["je", "j", "moi", "mon", "ma", "mes", "nous", "notre", "nos", "on", "i", "my", "we", "our"]
+        return firstPerson.contains(firstWord) ? "L’utilisateur a dit : « \(text) »" : text
+    }
+
     /// Mots significatifs, en minuscules et sans accents.
     static func words(_ text: String) -> Set<String> {
         let folded = text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "fr_FR"))

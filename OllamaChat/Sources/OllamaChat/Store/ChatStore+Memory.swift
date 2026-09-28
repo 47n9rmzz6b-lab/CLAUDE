@@ -6,7 +6,7 @@ extension ChatStore {
     var memoryAutoExtract: Bool { UserDefaults.standard.bool(forKey: SettingsKey.memoryAutoExtract) }
 
     func memoriesForPrompt() -> [String] {
-        memoryEnabled ? memory.textsForPrompt() : []
+        memoryEnabled ? memory.textsForPrompt().map(MemoryText.forPrompt) : []
     }
 
     /// « Retiens que… » / « Oublie… » au début d’un message : la mémoire est mise à jour
@@ -101,7 +101,9 @@ extension ChatStore {
             markMemoryProcessed(conversationID, count: processedCount)
             return
         }
-        let model = chatModels.contains(where: { $0.name == conversation.model }) ? conversation.model : draftModel
+        // Le modèle en cours d’utilisation, déjà chargé : un autre modèle pourrait l’évincer de la mémoire.
+        let installed = Set(chatModels.map(\.name))
+        let model = [currentModel, conversation.model, draftModel].first { installed.contains($0) } ?? ""
         guard !model.isEmpty, let client = try? makeClient() else { return }
 
         var userText = messages.map { "« \($0.content) »" }.joined(separator: "\n")
@@ -121,7 +123,13 @@ extension ChatStore {
                     .init(role: Role.system.rawValue, content: Self.memoryInstructions),
                     .init(role: Role.user.rawValue, content: prompt),
                 ],
-                options: OllamaClient.Options(temperature: 0, numPredict: 400),
+                // Même taille de contexte que la conversation en cours, sinon Ollama recharge le modèle ;
+                // gpt-oss réfléchit toujours un peu : il lui faut plus de place pour répondre.
+                options: OllamaClient.Options(
+                    temperature: 0,
+                    numCtx: model == currentModel ? contextLength(for: selectedConversation) : contextLength(for: conversation),
+                    numPredict: info(for: model).usesThinkingLevels ? 1500 : 400
+                ),
                 think: thinkParameter(for: model, setting: .off),
                 format: Self.memorySchema
             )
@@ -170,7 +178,11 @@ extension ChatStore {
             let reply = try await client.complete(
                 model: conversation.model,
                 messages: [.init(role: Role.user.rawValue, content: prompt)],
-                options: OllamaClient.Options(temperature: 0.3, numPredict: 40),
+                options: OllamaClient.Options(
+                    temperature: 0.3,
+                    numCtx: contextLength(for: conversation),
+                    numPredict: info(for: conversation.model).usesThinkingLevels ? 800 : 40
+                ),
                 think: thinkParameter(for: conversation.model, setting: .off)
             )
             guard let title = TitleCleaner.clean(reply),
