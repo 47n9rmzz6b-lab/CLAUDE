@@ -137,6 +137,7 @@ phase edition "Modifier le dernier message (↑ dans la zone vide)"
 focus_composer
 key 'key code 126'
 sleep 1.5
+AX_WINDOW=main ax find "" AXTextArea
 shot 08-edition
 key 'keystroke "a" using command down'
 paste "Quelle est la capitale du Canada ?"
@@ -176,7 +177,8 @@ choose_model moondream
 open -a "$APP" "$DOCS/formes.png"
 sleep 3
 shot 13-image-jointe
-send "Décris cette image en une phrase." 360
+# moondream ne comprend bien que l'anglais.
+send "Describe this image in one sentence." 360
 shot 14-vision
 
 phase recherche-prealable "Recherche préalable pour un modèle sans outils (moondream)"
@@ -219,11 +221,17 @@ sleep 2
 shot 21-export
 enter
 sleep 3
-exported=$(find "$HOME" -name "*.md" -newer /tmp/export.marker -not -path "*/Library/*" 2>/dev/null | head -1)
+# Le panneau propose le dernier dossier utilisé (ici celui des documents de test).
+exported=$(find "$HOME" "$DOCS" -name "*.md" -newer /tmp/export.marker -not -path "*/Library/*" 2>/dev/null | head -1)
 echo "  fichier exporté : ${exported:-aucun}"
 [ -n "$exported" ] && cp "$exported" "$SMOKE/export.md"
 
 phase saisie-rapide "Saisie rapide (⌥Espace) depuis une autre application"
+# Un document préparé dans une nouvelle conversation ne doit pas partir avec la question rapide.
+reset_ui
+key 'keystroke "n" using command down'
+open -a "$APP" "$DOCS/notes-projet.txt"
+sleep 3
 osascript -e 'tell application "Finder" to activate'
 sleep 1.5
 key 'key code 49 using option down'
@@ -231,6 +239,10 @@ sleep 1.5
 shot 22-saisie-rapide
 send_here "Dis bonjour en une phrase." 240
 shot 23-apres-saisie-rapide
+key 'keystroke "n" using command down'
+sleep 1
+ax find "notes-projet.txt" >/dev/null && echo "  document toujours prêt dans « Nouvelle conversation »" || echo "  DOCUMENT PERDU"
+shot 23b-brouillon-apres-saisie-rapide
 
 phase modeles "Gestion des modèles (⇧⌘M)"
 reset_ui

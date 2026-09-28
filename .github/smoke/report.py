@@ -123,7 +123,12 @@ def first(items):
 
 
 # Réglages › Personnalisation
-about = subprocess.run(["defaults", "read", "com.ollamachat.desktop", "aboutMe"], capture_output=True, text=True).stdout.strip()
+try:
+    import plistlib
+    exported_defaults = subprocess.run(["defaults", "export", "com.ollamachat.desktop", "-"], capture_output=True).stdout
+    about = plistlib.loads(exported_defaults).get("aboutMe", "")
+except Exception as error:  # noqa: BLE001
+    about = f"illisible : {error}"
 check("Réglages : « À propos de moi » saisi à l'écran", about.startswith("Je m'appelle Camille. Je suis infirmière"), repr(about[:80]))
 
 # Mode raisonnement
@@ -205,6 +210,8 @@ last = next((m for m in reversed(messages(r)) if m.get("role") == "user"), {})
 limit = context_length("moondream")
 check("Vision : image envoyée au modèle", bool(last.get("images")), f"model={body(r).get('model')} images={last.get('images')}")
 check("Vision : réponse obtenue", bool(r.get("response", {}).get("content")), repr(r.get("response", {}).get("content", "")[:160]))
+check("Vision : le modèle décrit les formes", any(word in r.get("response", {}).get("content", "").lower() for word in ("red", "circle", "blue", "square", "rouge", "cercle")),
+      informative=True)
 check("Vision : pas de paramètre think pour un modèle qui ne raisonne pas", "think" not in body(r))
 check("Contexte : limité au maximum du modèle", limit is None or options(r).get("num_ctx", 0) <= limit, f"num_ctx={options(r).get('num_ctx')} max={limit}")
 
@@ -255,21 +262,31 @@ r = first(chats("saisie-rapide"))
 check("Saisie rapide (⌥Espace) : question envoyée", last_user(r) == "Dis bonjour en une phrase.", repr(last_user(r)))
 quick = conversation_with("Dis bonjour en une phrase.") or {}
 check("Saisie rapide : réponse dans une nouvelle conversation", any(m.get("role") == "assistant" and m.get("content") for m in quick.get("messages", [])))
+check("Saisie rapide : le document préparé à côté n'est pas emporté", not quick.get("documents"), f"{[d.get('name') for d in quick.get('documents', [])]}")
 
 # Cohérence générale
-last_ctx = {}
+# Titre : même contexte que la réponse qui précède. Mémoire : celui de la conversation affichée,
+# donc de la réponse précédente ou de la suivante pour ce modèle.
 mismatches = []
+chats_by_model = {}
 for x in requests:
     if kind(x) == "chat":
-        last_ctx[body(x).get("model")] = options(x).get("num_ctx")
-    elif kind(x) in ("title", "memory"):
-        model = body(x).get("model")
-        if model in last_ctx and options(x).get("num_ctx") != last_ctx[model]:
-            mismatches.append((x["seq"], kind(x), model, options(x).get("num_ctx"), last_ctx[model]))
-check("Titres et mémoire : même num_ctx que la dernière réponse du modèle", not mismatches, f"{mismatches}")
-errors = [(x["seq"], x.get("status"), x.get("relay_error"), x.get("response", {}).get("error")) for x in requests
-          if x.get("status", 200) >= 400 or x.get("relay_error") or x.get("response", {}).get("error")]
+        chats_by_model.setdefault(body(x).get("model"), []).append((x["seq"], options(x).get("num_ctx")))
+for x in requests:
+    if kind(x) not in ("title", "memory"):
+        continue
+    model_chats = chats_by_model.get(body(x).get("model"), [])
+    before = [ctx for seq, ctx in model_chats if seq < x["seq"]][-1:]
+    after = [ctx for seq, ctx in model_chats if seq > x["seq"]][:1]
+    allowed = before if kind(x) == "title" else before + after
+    if allowed and options(x).get("num_ctx") not in allowed:
+        mismatches.append((x["seq"], kind(x), body(x).get("model"), options(x).get("num_ctx"), allowed))
+check("Titres et mémoire : même num_ctx que les réponses (pas de rechargement)", not mismatches, f"{mismatches}")
+errors = [(x["seq"], x.get("status"), x.get("response", {}).get("error")) for x in requests
+          if x.get("status", 200) >= 400 or x.get("response", {}).get("error")]
 check("Aucune erreur renvoyée par Ollama", not errors, f"{errors}")
+cut = [(x["seq"], kind(x), x.get("seconds")) for x in requests if x.get("relay_error")]
+check("Requêtes interrompues par l'app (arrêt, pause de la mémoire, fermeture)", not cut, f"{cut}", informative=True)
 failed = [m.get("errorText") for c in conversations for m in c.get("messages", []) if m.get("errorText")]
 check("Aucune erreur affichée dans les conversations", not failed, f"{failed}")
 crashes = glob.glob(os.path.join(HOME, "Library/Logs/DiagnosticReports/*OllamaChat*"))
