@@ -40,6 +40,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           cp /tmp/requests.jsonl OllamaChat/.smoke/ 2>/dev/null || true
-          git add -f OllamaChat/.smoke
-          git commit -q -m "tmp: smoke test screenshots" || true
-          git push origin "HEAD:$GITHUB_REF_NAME"
+          rm -rf /tmp/smoke-out && cp -R OllamaChat/.smoke /tmp/smoke-out
+          # La branche a pu avancer pendant le test : les captures sont posées sur sa dernière version.
+          for attempt in 1 2 3; do
+            git fetch -q --depth=1 origin "$GITHUB_REF_NAME"
+            git checkout -q -f FETCH_HEAD
+            rm -rf OllamaChat/.smoke && cp -R /tmp/smoke-out OllamaChat/.smoke
+            git add -f OllamaChat/.smoke
+            git commit -q -m "tmp: smoke test screenshots"
+            git push -q origin "HEAD:$GITHUB_REF_NAME" && break
+            sleep 5
+          done

@@ -79,10 +79,14 @@ key 'keystroke "," using command down'
 sleep 2
 ax click "=Personnalisation"
 sleep 1.5
-AX_WINDOW=Personnalisation ax click "" AXTextArea
-sleep 0.5
-paste "Je m'appelle Camille. Je suis infirmière à Lyon et j'ai un Mac mini M4."
-sleep 1
+# On ne colle que si la zone a été trouvée : sinon le texte irait dans l'adresse du serveur.
+if AX_WINDOW=Personnalisation ax click "" AXTextArea; then
+  sleep 0.5
+  paste "Je m'appelle Camille. Je suis infirmière à Lyon et j'ai un Mac mini M4."
+  sleep 1
+else
+  AX_WINDOW="" ax dump > "$SMOKE/ax-reglages-echec.txt"
+fi
 shot 02-reglages-personnalisation
 key 'keystroke "w" using command down'
 sleep 1
