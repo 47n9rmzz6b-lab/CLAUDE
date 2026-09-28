@@ -63,6 +63,9 @@ final class TitleTests: XCTestCase {
         XCTAssertEqual(TitleCleaner.clean("Titre : Voyage au Japon.\nAutre ligne"), "Voyage au Japon")
         XCTAssertEqual(TitleCleaner.clean("<think>réflexion</think>Installer Ollama"), "Installer Ollama")
         XCTAssertNil(TitleCleaner.clean("  "))
+        XCTAssertEqual(TitleCleaner.clean("Camille!"), "Camille")
+        // Une réponse entière n’est pas un titre : le titre actuel est gardé.
+        XCTAssertNil(TitleCleaner.clean("Le budget total du projet Hibiscus s'élève à 12 000 euros, validé par Mme Durand."))
     }
 }
 
@@ -80,7 +83,7 @@ final class PromptTests: XCTestCase {
         let prompt = try XCTUnwrap(PromptBuilder.systemPrompt(context))
         XCTAssertTrue(prompt.hasPrefix("Date du jour :"))
         XCTAssertTrue(prompt.contains("Distingue clairement les faits"))
-        XCTAssertTrue(prompt.contains("Je m'appelle Anka."))
+        XCTAssertTrue(prompt.contains("« Je m'appelle Anka. »"), "présenté comme les mots de l’utilisateur")
         XCTAssertTrue(prompt.contains("- L'utilisateur a un Mac mini M4."))
         XCTAssertTrue(prompt.contains("web_search"))
         XCTAssertTrue(prompt.contains("« rapport.pdf »"))

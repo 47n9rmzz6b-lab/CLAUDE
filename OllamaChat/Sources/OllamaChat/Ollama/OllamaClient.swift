@@ -320,13 +320,14 @@ struct OllamaClient {
         messages: [Message],
         options: Options?,
         think: Think? = nil,
-        format: JSONValue? = nil
+        format: JSONValue? = nil,
+        timeout: TimeInterval = 300
     ) async throws -> String {
         let body = try JSONEncoder().encode(ChatRequest(
             model: model, messages: messages, stream: false, options: options,
             think: think, tools: nil, format: format, keepAlive: nil
         ))
-        let data = try await perform(request("api/chat", method: "POST", body: body, timeout: 300))
+        let data = try await perform(request("api/chat", method: "POST", body: body, timeout: timeout))
         let response = try JSONDecoder().decode(ChatResponse.self, from: data)
         guard let content = response.message?.content else { throw OllamaError.emptyResponse }
         return content

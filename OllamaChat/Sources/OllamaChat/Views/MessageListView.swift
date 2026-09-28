@@ -90,6 +90,17 @@ struct MessageListView: View {
             .onChange(of: lastMessageLength) {
                 if followsBottom { scrollToBottom(proxy) }
             }
+            .onChange(of: editingMessageID) { _, id in
+                // Message en cours de modification (↑, crayon) : on l’amène au centre de la vue.
+                guard let id else { return }
+                followsBottom = false
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(50))
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(id, anchor: .center)
+                    }
+                }
+            }
             .overlay(alignment: .bottom) {
                 if !isAtBottom && !followsBottom {
                     Button {

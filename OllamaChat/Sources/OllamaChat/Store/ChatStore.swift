@@ -67,6 +67,8 @@ final class ChatStore {
     @ObservationIgnored var pullTask: Task<Void, Never>?
     @ObservationIgnored var modelInfoDigests: [String: String] = [:]
     @ObservationIgnored var memoryTask: Task<Void, Never>?
+    /// Numéro de la file d’extraction en cours : une file interrompue ne touche plus à `memoryTask`.
+    @ObservationIgnored var memoryRun = 0
     @ObservationIgnored var pendingMemoryConversations: [UUID] = []
     @ObservationIgnored var launchMemoryScanDone = false
     @ObservationIgnored var webSearchConfiguredCache: (date: Date, value: Bool)?

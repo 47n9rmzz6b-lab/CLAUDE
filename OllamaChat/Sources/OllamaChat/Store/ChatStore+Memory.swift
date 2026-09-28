@@ -25,13 +25,16 @@ extension ChatStore {
         }
     }
 
-    /// Après chaque réponse : titre, puis souvenirs si la conversation s’est beaucoup allongée.
+    /// Après chaque réponse : titre, puis souvenirs si la conversation s’est beaucoup allongée,
+    /// et reprise des extractions interrompues par la réponse.
     func afterReply(in conversationID: UUID, messageID: UUID) async {
         await generateTitleIfNeeded(conversationID)
+        var ids: [UUID] = []
         if let conversation = conversation(conversationID),
            unprocessedUserMessages(in: conversation).count >= 4 {
-            scheduleMemoryExtraction(for: [conversationID])
+            ids.append(conversationID)
         }
+        scheduleMemoryExtraction(for: ids)
     }
 
     /// Premier contact avec Ollama : on relit les conversations récentes pas encore examinées.
@@ -57,24 +60,36 @@ extension ChatStore {
     }
 
     func scheduleMemoryExtraction(for ids: [UUID]) {
-        guard memoryEnabled, memoryAutoExtract, !ids.isEmpty else { return }
+        guard memoryEnabled, memoryAutoExtract else { return }
         pendingMemoryConversations.append(contentsOf: ids.filter { !pendingMemoryConversations.contains($0) })
-        guard memoryTask == nil else { return }
+        // Pendant une réponse, la file attend : afterReply la relance ensuite.
+        guard memoryTask == nil, !isGenerating, !pendingMemoryConversations.isEmpty else { return }
+        memoryRun += 1
+        let run = memoryRun
         memoryTask = Task { [weak self] in
             await self?.drainMemoryQueue()
+            if self?.memoryRun == run { self?.memoryTask = nil }
         }
     }
 
+    /// Une réponse démarre : l’extraction en cours s’interrompt, car Ollama ne traite souvent
+    /// qu’une requête à la fois et la réponse passe avant. Elle reprendra après.
+    func pauseMemoryExtraction() {
+        guard let memoryTask else { return }
+        memoryTask.cancel()
+        self.memoryTask = nil
+        memoryRun += 1
+    }
+
     private func drainMemoryQueue() async {
-        while !pendingMemoryConversations.isEmpty {
-            // On laisse passer la réponse en cours : les deux se disputeraient le modèle.
-            while isGenerating {
-                try? await Task.sleep(for: .seconds(2))
+        while !Task.isCancelled, !isGenerating, let id = pendingMemoryConversations.first {
+            pendingMemoryConversations.removeFirst()
+            if !(await extractMemories(from: id)) {
+                // Interrompue : elle sera refaite plus tard.
+                if !pendingMemoryConversations.contains(id) { pendingMemoryConversations.insert(id, at: 0) }
+                return
             }
-            let id = pendingMemoryConversations.removeFirst()
-            await extractMemories(from: id)
         }
-        memoryTask = nil
     }
 
     private static let memorySchema: JSONValue = [
@@ -93,18 +108,22 @@ extension ChatStore {
     S’il n’y a rien à retenir, renvoie une liste vide. Réponds uniquement en JSON.
     """
 
-    func extractMemories(from conversationID: UUID) async {
-        guard memoryEnabled, memoryAutoExtract, let conversation = conversation(conversationID) else { return }
+    /// Renvoie `false` si l’extraction a été interrompue par une réponse (elle sera refaite).
+    @discardableResult
+    func extractMemories(from conversationID: UUID) async -> Bool {
+        guard memoryEnabled, memoryAutoExtract, let conversation = conversation(conversationID) else { return true }
         let messages = unprocessedUserMessages(in: conversation)
         let processedCount = conversation.messages.count
         guard !messages.isEmpty else {
             markMemoryProcessed(conversationID, count: processedCount)
-            return
+            return true
         }
-        // Le modèle en cours d’utilisation, déjà chargé : un autre modèle pourrait l’évincer de la mémoire.
+        // Un modèle déjà chargé (un autre pourrait l’évincer de la mémoire), de préférence parmi ceux
+        // qui gèrent les outils : ils suivent mieux ce genre de consigne que les petits modèles de vision.
         let installed = Set(chatModels.map(\.name))
-        let model = [currentModel, conversation.model, draftModel].first { installed.contains($0) } ?? ""
-        guard !model.isEmpty, let client = try? makeClient() else { return }
+        let candidates = [currentModel, conversation.model, draftModel].filter { installed.contains($0) }
+        let model = candidates.first { info(for: $0).supportsTools } ?? candidates.first ?? ""
+        guard !model.isEmpty, let client = try? makeClient() else { return true }
 
         var userText = messages.map { "« \($0.content) »" }.joined(separator: "\n")
         if userText.count > 6000 { userText = String(userText.suffix(6000)) }
@@ -128,10 +147,12 @@ extension ChatStore {
                 options: OllamaClient.Options(
                     temperature: 0,
                     numCtx: model == currentModel ? contextLength(for: selectedConversation) : contextLength(for: conversation),
-                    numPredict: info(for: model).usesThinkingLevels ? 1500 : 400
+                    numPredict: info(for: model).usesThinkingLevels ? 1500 : 300
                 ),
                 think: thinkParameter(for: model, setting: .off),
-                format: Self.memorySchema
+                format: Self.memorySchema,
+                // Un modèle trop lent ne doit pas occuper Ollama indéfiniment.
+                timeout: 120
             )
             var added = 0
             for fact in MemoryExtraction.parse(reply) where memory.add(fact, conversationID: conversationID) {
@@ -143,8 +164,17 @@ extension ChatStore {
                 conversations[index].messages[last].memoryUpdated = true
                 save()
             }
+            return true
         } catch {
+            if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled {
+                return false
+            }
             NSLog("OllamaChat : extraction des souvenirs impossible : \(error)")
+            // Trop lent pour ce modèle : ces messages ne seront pas relus.
+            if (error as? URLError)?.code == .timedOut {
+                markMemoryProcessed(conversationID, count: processedCount)
+            }
+            return true
         }
     }
 
@@ -168,7 +198,8 @@ extension ChatStore {
 
         let answerText = ThinkingParser.split(answer).answer
         let prompt = """
-        Donne un titre très court (3 à 6 mots) à cette conversation, dans la langue de l’utilisateur. \
+        Donne un titre très court (2 à 6 mots) qui résume le sujet de cette conversation, dans la langue \
+        de l’utilisateur, comme « Recette des crêpes » ou « Installer Ollama sur Mac ». \
         Réponds uniquement par le titre, sans guillemets ni ponctuation finale.
 
         Utilisateur : \(question.prefix(1000))
@@ -220,8 +251,10 @@ enum TitleCleaner {
         for prefix in ["titre :", "titre:", "title:", "title :"] where text.lowercased().hasPrefix(prefix) {
             text = String(text.dropFirst(prefix.count))
         }
-        text = text.trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "\"'«»“”*#`.")))
+        text = text.trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "\"'«»“”*#`.!:")))
         guard text.count >= 2 else { return nil }
+        // Une phrase entière (petit modèle qui répond au lieu de titrer) : le titre actuel est gardé.
+        guard text.split(whereSeparator: \.isWhitespace).count <= 8 else { return nil }
         return text.count > 60 ? String(text.prefix(60)).trimmingCharacters(in: .whitespaces) + "…" : text
     }
 }

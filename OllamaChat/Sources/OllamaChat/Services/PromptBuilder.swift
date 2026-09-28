@@ -46,7 +46,10 @@ enum PromptBuilder {
 
         let aboutMe = context.aboutMe.trimmingCharacters(in: .whitespacesAndNewlines)
         if !aboutMe.isEmpty {
-            sections.append("À propos de l’utilisateur :\n\(aboutMe)")
+            sections.append("""
+            L’utilisateur se présente ainsi (quand il écrit « je », il parle de lui, pas de toi) :
+            « \(aboutMe) »
+            """)
         }
 
         let style = context.responseStyle.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -63,7 +66,8 @@ enum PromptBuilder {
         case .tools:
             sections.append("""
             Tu peux chercher sur Internet avec l’outil web_search et lire une page avec l’outil web_fetch. \
-            Utilise-les pour les informations récentes, précises ou que tu ne connais pas. \
+            Dès que la question porte sur l’actualité, des faits récents ou des données à vérifier \
+            (météo, prix, dates, chiffres, personnes), appelle web_search avant de répondre, sans demander la permission. \
             Appuie ta réponse sur les résultats obtenus et cite-les avec leur numéro entre crochets, par exemple [1] ou [2].
             """)
         case .preSearch:

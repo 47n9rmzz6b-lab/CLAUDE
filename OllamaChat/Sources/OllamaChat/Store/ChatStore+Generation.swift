@@ -146,6 +146,7 @@ extension ChatStore {
         }
 
         let request = makeRequest(for: conversation)
+        pauseMemoryExtraction()
         generatingID = conversationID
         generationTask = Task { [weak self] in
             await self?.streamReply(client: client, request: request, conversationID: conversationID, messageID: messageID)
@@ -298,7 +299,17 @@ extension ChatStore {
                     }
                 }
 
-                guard !toolCalls.isEmpty, offerTools, !Task.isCancelled else { break }
+                guard !toolCalls.isEmpty, offerTools, !Task.isCancelled else {
+                    // Fin normale sans aucun texte de réponse : on le dit, avec un bouton Réessayer.
+                    if !Task.isCancelled, let message = conversation(conversationID)?.messages.first(where: { $0.id == messageID }),
+                       ThinkingParser.split(message.content).answer.isEmpty {
+                        let text = message.thinking.isEmpty && ThinkingParser.split(message.content).thinking.isEmpty
+                            ? "Le modèle n’a rien répondu. Réessayez, ou choisissez un autre modèle."
+                            : "Le modèle a réfléchi sans donner de réponse. Réessayez, ou choisissez un autre modèle."
+                        updateMessage(messageID, in: conversationID) { $0.errorText = text }
+                    }
+                    break
+                }
                 // Le texte écrit avant un appel d’outil (« je vais chercher… ») n’est pas conservé.
                 updateMessage(messageID, in: conversationID) { $0.content = contentBefore }
                 history.append(.init(role: Role.assistant.rawValue, content: roundContent, toolCalls: toolCalls))
