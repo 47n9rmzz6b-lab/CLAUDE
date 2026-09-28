@@ -1,0 +1,45 @@
+# Temporaire : vérification complète de l'app sur un Mac, avec un vrai Ollama. Les captures
+# et le rapport sont publiés dans OllamaChat/.smoke par un commit sur la branche.
+name: tmp smoke test
+
+on:
+  push:
+    branches: [claude/peaceful-ramanujan-ebg75y]
+    paths:
+      - "OllamaChat/Sources/**"
+      - ".github/smoke/**"
+      - ".github/workflows/tmp-smoke-test.yml"
+
+jobs:
+  smoke:
+    runs-on: macos-15
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ollama et modèles (en arrière-plan)
+        run: |
+          brew install ollama > /dev/null
+          (OLLAMA_NUM_PARALLEL=1 OLLAMA_KEEP_ALIVE=30m ollama serve > /tmp/ollama.log 2>&1 &)
+          sleep 3
+          ollama --version
+          (for model in qwen3:0.6b all-minilm moondream; do ollama pull "$model" >> /tmp/pull.log 2>&1; done; touch /tmp/pull.done) &
+
+      - name: Construire l'app
+        working-directory: OllamaChat
+        run: ./scripts/build-app.sh
+
+      - name: Vérification à l'écran
+        run: bash .github/smoke/run.sh
+
+      - name: Publier les captures
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp /tmp/requests.jsonl OllamaChat/.smoke/ 2>/dev/null || true
+          git add -f OllamaChat/.smoke
+          git commit -q -m "tmp: smoke test screenshots" || true
+          git push origin "HEAD:$GITHUB_REF_NAME"
