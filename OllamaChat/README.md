@@ -2,7 +2,7 @@
 
 Ollama Chat est une application Mac native pour discuter avec vos modèles [Ollama](https://ollama.com) dans une fenêtre semblable à celle de l’application Claude, sans passer par le Terminal.
 
-- **Conversations** : elles sont enregistrées et classées par date (Aujourd’hui, Hier, 7 derniers jours…) dans une barre latérale, avec recherche, renommage et suppression.
+- **Conversations** : elles sont enregistrées et classées par date (Aujourd’hui, Hier, 7 derniers jours…) dans une barre latérale, avec recherche, renommage et suppression. Au lancement, l’application rouvre la dernière conversation affichée.
 - **Réponses affichées au fil de l’eau**, avec la mise en forme Markdown : titres, listes, tableaux, citations, et blocs de code munis d’un bouton « Copier ».
 - **Modèles qui raisonnent** (qwen3, deepseek-r1…) : leur réflexion s’affiche à part, dans un encadré « Réflexion » qu’on peut déplier.
 - **Choix du modèle** dans chaque conversation, depuis un menu placé sous la zone de saisie.
@@ -22,8 +22,8 @@ Ollama Chat est une application Mac native pour discuter avec vos modèles [Olla
 
 Chaque modification du dossier `OllamaChat/` déclenche la compilation de l’application sur un Mac de GitHub Actions. L’application obtenue fonctionne sur Apple Silicon comme sur Intel.
 
-1. Dans l’onglet **Actions** du dépôt, ouvrez la dernière exécution réussie de « Ollama Chat (macOS) ».
-2. En bas de la page, téléchargez l’artefact **Ollama-Chat-macOS**, puis décompressez-le deux fois pour obtenir `Ollama Chat.app`.
+1. Connecté à votre compte GitHub, ouvrez la [liste des compilations « Ollama Chat (macOS) »](https://github.com/47n9rmzz6b-lab/CLAUDE/actions/workflows/ollama-chat-macos.yml) (onglet **Actions** du dépôt), puis la dernière exécution marquée d’une coche verte.
+2. Tout en bas de la page, section **Artifacts**, téléchargez **Ollama-Chat-macOS**, puis décompressez-le deux fois pour obtenir `Ollama Chat.app`.
 3. Glissez `Ollama Chat.app` dans le dossier **Applications**.
 4. L’application n’est pas signée par un développeur identifié : macOS refuse de l’ouvrir la première fois.
    - Ouvrez **Réglages Système › Confidentialité et sécurité**, puis cliquez sur **Ouvrir quand même** en face du message concernant Ollama Chat.

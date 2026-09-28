@@ -47,8 +47,7 @@ struct OllamaChatApp: App {
         }
     }
 
-    /// Taille initiale de la fenêtre, réduite sur les petits écrans pour qu’elle y tienne entière :
-    /// une fenêtre plus grande que l’écran, redimensionnée par le système, s’affiche mal au lancement.
+    /// Taille initiale de la fenêtre, réduite sur les petits écrans pour qu’elle y tienne entière.
     private static var defaultWindowSize: CGSize {
         let visible = NSScreen.main?.visibleFrame.size ?? CGSize(width: 1440, height: 900)
         return CGSize(
