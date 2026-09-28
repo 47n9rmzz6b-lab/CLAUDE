@@ -44,6 +44,24 @@ struct OllamaChatApp: App {
                     .keyboardShortcut("v", modifiers: [.command, .shift])
                     .disabled(!store.canRegenerate)
                 Divider()
+                Toggle("Réfléchir avant de répondre", isOn: Binding(
+                    get: { store.currentThinking != .off },
+                    set: { store.setThinking($0 ? .on : .off) }
+                ))
+                .keyboardShortcut("t", modifiers: [.command, .option])
+                .disabled(!store.info(for: store.currentModel).supportsThinking)
+                Toggle("Recherche web", isOn: Binding(
+                    get: { store.currentWebSearch },
+                    set: { store.setWebSearch($0) }
+                ))
+                .keyboardShortcut("w", modifiers: [.command, .option])
+                Menu("Profil de réponse") {
+                    ForEach(Array(ResponseProfile.all.enumerated()), id: \.element.id) { position, profile in
+                        Button(profile.name) { store.selectProfile(profile.id) }
+                            .keyboardShortcut(KeyEquivalent(Character("\(position + 1)")), modifiers: [.command, .option])
+                    }
+                }
+                Divider()
                 Button("Gérer les modèles…") { store.showModelManager = true }
                     .keyboardShortcut("m", modifiers: [.command, .shift])
                 Button("Actualiser la liste des modèles") {
@@ -69,6 +87,7 @@ struct OllamaChatApp: App {
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Reçoit les fichiers ouverts avec l’app (« Ouvrir avec », dépôt sur l’icône du Dock).
     weak var store: ChatStore? {

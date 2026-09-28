@@ -217,35 +217,41 @@ enum HTMLText {
         text = replace(#"<(br|/p|/div|/li|/h[1-6]|/tr|/section|/article)\b[^>]*>"#, in: text, with: "\n")
         text = replace(#"<[^>]+>"#, in: text, with: " ")
         text = decodeEntities(text)
-        text = replace(#"[ \t\u{00A0}]+"#, in: text, with: " ")
+        text = replace(#"[ \t\u00A0]+"#, in: text, with: " ")
         text = replace(#"\s*\n\s*"#, in: text, with: "\n")
         text = replace(#"\n{3,}"#, in: text, with: "\n\n")
         return (title, text.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     static func decodeEntities(_ text: String) -> String {
+        // Entités numériques d’abord (&#233; ou &#xE9;), puis nommées, « &amp; » en dernier :
+        // « &amp;lt; » doit donner « &lt; », pas « < ».
         var result = text
-        let named = ["&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": "\"", "&#39;": "'", "&apos;": "'", "&nbsp;": " ",
-                     "&eacute;": "é", "&egrave;": "è", "&agrave;": "à", "&ccedil;": "ç", "&ecirc;": "ê", "&rsquo;": "’", "&laquo;": "«", "&raquo;": "»"]
+        if let regex = try? NSRegularExpression(pattern: #"&#([xX]?)([0-9A-Fa-f]+);"#) {
+            let nsText = result as NSString
+            var output = ""
+            var cursor = 0
+            for match in regex.matches(in: result, range: NSRange(location: 0, length: nsText.length)) {
+                output += nsText.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
+                let isHex = !nsText.substring(with: match.range(at: 1)).isEmpty
+                let digits = nsText.substring(with: match.range(at: 2))
+                if let code = UInt32(digits, radix: isHex ? 16 : 10), let scalar = Unicode.Scalar(code) {
+                    output.unicodeScalars.append(scalar)
+                } else {
+                    output += nsText.substring(with: match.range)
+                }
+                cursor = match.range.location + match.range.length
+            }
+            output += nsText.substring(from: cursor)
+            result = output
+        }
+        let named = [("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&apos;", "'"), ("&nbsp;", " "),
+                     ("&eacute;", "é"), ("&egrave;", "è"), ("&agrave;", "à"), ("&ccedil;", "ç"), ("&ecirc;", "ê"),
+                     ("&rsquo;", "’"), ("&laquo;", "«"), ("&raquo;", "»"), ("&amp;", "&")]
         for (entity, value) in named {
             result = result.replacingOccurrences(of: entity, with: value)
         }
-        // Entités numériques : &#233; ou &#xE9;
-        guard let regex = try? NSRegularExpression(pattern: #"&#(x?)([0-9A-Fa-f]+);"#) else { return result }
-        let nsText = result as NSString
-        var output = ""
-        var cursor = 0
-        for match in regex.matches(in: result, range: NSRange(location: 0, length: nsText.length)) {
-            output += nsText.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
-            let isHex = nsText.substring(with: match.range(at: 1)) == "x"
-            let digits = nsText.substring(with: match.range(at: 2))
-            if let code = UInt32(digits, radix: isHex ? 16 : 10), let scalar = Unicode.Scalar(code) {
-                output.unicodeScalars.append(scalar)
-            }
-            cursor = match.range.location + match.range.length
-        }
-        output += nsText.substring(from: cursor)
-        return output
+        return result
     }
 
     private static func replace(_ pattern: String, in text: String, with template: String) -> String {
