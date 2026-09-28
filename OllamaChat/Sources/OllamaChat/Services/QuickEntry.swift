@@ -128,8 +128,7 @@ final class QuickEntryController {
         let view = QuickEntryView(
             onSubmit: { [weak self, weak store] text in
                 self?.close()
-                store?.newConversation()
-                store?.send(text, images: [])
+                store?.quickAsk(text)
                 Self.showMainWindow()
             },
             onCancel: { [weak self] in self?.close() }
@@ -179,7 +178,8 @@ private struct QuickEntryView: View {
                 .focused($focused)
                 .onSubmit {
                     let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !value.isEmpty else { return }
+                    // Pendant une réponse, la question reste dans le champ : Entrée la renverra.
+                    guard !value.isEmpty, !store.isGenerating else { return }
                     text = ""
                     onSubmit(value)
                 }

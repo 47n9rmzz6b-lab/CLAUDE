@@ -38,6 +38,17 @@ extension ChatStore {
         generate(in: conversationID)
     }
 
+    /// Question posée depuis la saisie rapide : une nouvelle conversation, sans les images ni les
+    /// documents préparés dans la fenêtre principale, qui restent pour la conversation en cours de préparation.
+    func quickAsk(_ text: String) {
+        guard !isGenerating else { return }
+        let documents = draftDocuments
+        draftDocuments = []
+        newConversation()
+        send(text, images: [])
+        draftDocuments = documents
+    }
+
     func regenerate() {
         guard canRegenerate, let selectedID, let index = index(of: selectedID) else { return }
         conversations[index].messages.removeLast()
