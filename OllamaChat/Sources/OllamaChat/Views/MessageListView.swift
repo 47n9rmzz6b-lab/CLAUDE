@@ -6,6 +6,7 @@ import SwiftUI
 struct MessageListView: View {
     let conversation: Conversation
     let streamingMessageID: UUID?
+    let editingMessageID: UUID?
     let serif: Bool
 
     /// Suivre la fin du fil. Seul un défilement vers le haut fait par l’utilisateur l’interrompt :
@@ -32,6 +33,7 @@ struct MessageListView: View {
                             message: message,
                             isLast: message.id == conversation.messages.last?.id,
                             isStreaming: message.id == streamingMessageID,
+                            isEditing: message.id == editingMessageID,
                             serif: serif
                         )
                         .equatable()

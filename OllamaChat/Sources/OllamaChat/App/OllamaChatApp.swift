@@ -17,12 +17,21 @@ struct OllamaChatApp: App {
                 .environment(store)
                 .tint(Theme.accent)
                 .frame(minWidth: 760, minHeight: 500)
+                .onAppear { appDelegate.store = store }
         }
         .defaultSize(Self.defaultWindowSize)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Nouvelle conversation") { store.newConversation() }
                     .keyboardShortcut("n")
+                Button("Joindre des fichiers…") { store.chooseAttachments() }
+                    .keyboardShortcut("o")
+                Divider()
+                Button("Exporter la conversation…") {
+                    if let id = store.selectedID { store.exportConversation(id) }
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+                .disabled(store.selectedID == nil)
             }
             CommandMenu("Conversation") {
                 Button("Arrêter la génération") { store.stopGeneration() }
@@ -30,6 +39,9 @@ struct OllamaChatApp: App {
                     .disabled(!store.isGenerating)
                 Button("Régénérer la dernière réponse") { store.regenerate() }
                     .keyboardShortcut("r")
+                    .disabled(!store.canRegenerate)
+                Button("Vérifier la dernière réponse") { store.verifyLastAnswer() }
+                    .keyboardShortcut("v", modifiers: [.command, .shift])
                     .disabled(!store.canRegenerate)
                 Divider()
                 Button("Gérer les modèles…") { store.showModelManager = true }
@@ -58,6 +70,23 @@ struct OllamaChatApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Reçoit les fichiers ouverts avec l’app (« Ouvrir avec », dépôt sur l’icône du Dock).
+    weak var store: ChatStore? {
+        didSet { flushPendingURLs() }
+    }
+    private var pendingURLs: [URL] = []
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        pendingURLs.append(contentsOf: urls)
+        flushPendingURLs()
+    }
+
+    private func flushPendingURLs() {
+        guard let store, !pendingURLs.isEmpty else { return }
+        store.attach(urls: pendingURLs)
+        pendingURLs.removeAll()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Lancée avec « swift run », l’app n’est pas dans un bundle .app : on la déclare
         // comme application normale pour qu’elle ait une icône dans le Dock et le focus clavier.

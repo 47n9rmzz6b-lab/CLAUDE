@@ -34,6 +34,29 @@
 	</dict>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Ollama Chat utilise le micro pour la dictée de vos messages.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Ollama Chat transcrit votre voix en texte pour la dictée, sur ce Mac quand la langue le permet.</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Document ou image</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.image</string>
+				<string>com.adobe.pdf</string>
+				<string>public.text</string>
+				<string>public.rtf</string>
+				<string>org.openxmlformats.wordprocessingml.document</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Ollama Chat se connecte au serveur Ollama dont vous avez indiqué l’adresse sur votre réseau local.</string>
 	<key>NSPrincipalClass</key>

@@ -9,7 +9,7 @@ struct ModelManagerView: View {
     @State private var modelToDelete: String?
     @State private var isConfirmingDelete = false
 
-    private let suggestions = ["llama3.2", "gemma3", "qwen3", "mistral", "deepseek-r1"]
+    private let suggestions = ["llama3.2", "gemma3", "qwen3", "mistral", "deepseek-r1", "embeddinggemma"]
 
     private var canPull: Bool {
         !newModel.trimmingCharacters(in: .whitespaces).isEmpty && store.pull?.isActive != true && store.isConnected
@@ -69,8 +69,9 @@ struct ModelManagerView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(model.name)
                                         .font(.body.weight(.medium))
-                                    if !model.summary.isEmpty {
-                                        Text(model.summary)
+                                    let details = capabilitySummary(for: model)
+                                    if !details.isEmpty {
+                                        Text(details)
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
@@ -120,6 +121,17 @@ struct ModelManagerView: View {
         } message: {
             Text("Le modèle sera effacé du disque. Vous pourrez le télécharger à nouveau plus tard.")
         }
+    }
+
+    private func capabilitySummary(for model: OllamaModel) -> String {
+        let info = store.info(for: model.name)
+        var parts: [String] = []
+        if !model.summary.isEmpty { parts.append(model.summary) }
+        if info.isEmbeddingModel { parts.append("indexation de documents") }
+        if info.supportsThinking { parts.append("réflexion") }
+        if info.supportsVision { parts.append("images") }
+        if info.supportsTools { parts.append("outils") }
+        return parts.joined(separator: " · ")
     }
 
     private func startPull() {

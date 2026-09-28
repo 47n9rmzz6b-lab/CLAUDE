@@ -20,8 +20,16 @@ struct ContentView: View {
         .task {
             await store.monitorConnection()
         }
-        .onChange(of: store.selectedID) {
-            UserDefaults.standard.set(store.selectedID?.uuidString, forKey: SettingsKey.lastConversationID)
+        .onAppear {
+            // Saisie rapide : raccourci global et panneau flottant.
+            QuickEntryController.shared.store = store
+            HotKeyCenter.shared.onTrigger = { QuickEntryController.shared.toggle() }
+            HotKeyCenter.shared.register(QuickEntryShortcut.current)
+        }
+        .onChange(of: store.selectedID) { previous, current in
+            UserDefaults.standard.set(current?.uuidString, forKey: SettingsKey.lastConversationID)
+            store.editingMessageID = nil
+            store.conversationDidChange(from: previous)
         }
     }
 }

@@ -13,6 +13,10 @@ struct GrowingTextView: NSViewRepresentable {
     var minHeight: CGFloat = 20
     var maxHeight: CGFloat = 220
     var onSubmit: () -> Void
+    /// Image collée (⌘V) : elle devient une pièce jointe au lieu d’être insérée dans le texte.
+    var onPasteImage: ((Data) -> Void)?
+    /// Flèche ↑ dans une zone vide : modifier le dernier message envoyé.
+    var onEditLast: (() -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -21,6 +25,7 @@ struct GrowingTextView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSScrollView {
         let textView = ComposerTextView(usingTextLayoutManager: false)
         textView.takesFocus = takesFocus
+        textView.onPasteImage = onPasteImage
         textView.delegate = context.coordinator
         textView.font = font
         textView.textColor = .labelColor
@@ -63,6 +68,7 @@ struct GrowingTextView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.parent = self
         guard let textView = context.coordinator.textView else { return }
+        (textView as? ComposerTextView)?.onPasteImage = onPasteImage
         if textView.string != text {
             textView.string = text
             context.coordinator.recalculateHeight()
@@ -85,6 +91,10 @@ struct GrowingTextView: NSViewRepresentable {
         }
 
         func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            if commandSelector == #selector(NSResponder.moveUp(_:)), textView.string.isEmpty, let onEditLast = parent.onEditLast {
+                onEditLast()
+                return true
+            }
             guard commandSelector == #selector(NSResponder.insertNewline(_:)) else { return false }
             let flags = NSApp.currentEvent?.modifierFlags ?? []
             if flags.contains(.shift) || flags.contains(.option) {
@@ -115,7 +125,30 @@ struct GrowingTextView: NSViewRepresentable {
 
 private final class ComposerTextView: NSTextView {
     var takesFocus = true
+    var onPasteImage: ((Data) -> Void)?
     private var didAttemptFocus = false
+
+    // Les fichiers déposés sont gérés par la fenêtre (pièces jointes) : le champ n’accepte que du texte.
+    override var acceptableDragTypes: [NSPasteboard.PasteboardType] { [.string] }
+
+    override func paste(_ sender: Any?) {
+        let pasteboard = NSPasteboard.general
+        if let onPasteImage {
+            // Fichier image copié dans le Finder (le presse-papiers contient aussi son nom en texte).
+            if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
+               let url = urls.first(where: AttachmentStore.isImage), let data = try? Data(contentsOf: url) {
+                onPasteImage(data)
+                return
+            }
+            // Capture d’écran ou image copiée depuis une app.
+            let hasText = pasteboard.availableType(from: [.string]) != nil
+            if !hasText, let type = pasteboard.availableType(from: [.png, .tiff]), let data = pasteboard.data(forType: type) {
+                onPasteImage(data)
+                return
+            }
+        }
+        super.paste(sender)
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()

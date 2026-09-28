@@ -28,6 +28,8 @@ struct SidebarView: View {
                             .tag(conversation.id)
                             .contextMenu {
                                 Button("Renommer…") { startRenaming(conversation) }
+                                Button("Exporter en Markdown…") { store.exportConversation(conversation.id) }
+                                Divider()
                                 Button("Supprimer…", role: .destructive) { confirmDelete(conversation.id) }
                             }
                     }
