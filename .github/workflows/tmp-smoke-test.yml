@@ -91,7 +91,8 @@ jobs:
           open "build/Ollama Chat.app" --args -lastConversationID 11111111-2222-3333-4444-555555555555
           sleep 8
           pgrep -x OllamaChat
-          /tmp/shot.sh 1-conversation-sans-ollama
+          osascript -e 'tell application "System Events" to tell process "OllamaChat" to get {position, size} of window 1' || true
+          /tmp/shot.sh 1-lancement
 
       - name: Start Ollama with a small model
         run: |
@@ -100,39 +101,64 @@ jobs:
           sleep 4
           ollama pull qwen3:0.6b > /dev/null
           ollama list
-          sleep 8
+          # Charge le modèle en mémoire pour que la réponse démarre vite pendant le test.
+          curl -s http://localhost:11434/api/generate -d '{"model":"qwen3:0.6b","prompt":"hi","stream":false,"think":false}' > /dev/null || true
+          sleep 6
           pgrep -x OllamaChat
-          /tmp/shot.sh 2-conversation-connectee
+          /tmp/shot.sh 2-connecte
+
+      - name: Switch conversations with the mouse
+        continue-on-error: true
+        run: |
+          read -r X Y <<<"$(osascript -e 'tell application "System Events" to tell process "OllamaChat" to get position of window 1' | tr -d ',')"
+          echo "window at $X $Y"
+          osascript -e 'tell application "Ollama Chat" to activate'
+          sleep 1
+          osascript -e "tell application \"System Events\" to tell process \"OllamaChat\" to click at {$((X + 90)), $((Y + 226))}"
+          sleep 2
+          /tmp/shot.sh 3-autre-conversation
+          osascript -e "tell application \"System Events\" to tell process \"OllamaChat\" to click at {$((X + 90)), $((Y + 166))}"
+          sleep 2
+          /tmp/shot.sh 4-retour
 
       - name: Send a message through the UI
         continue-on-error: true
         run: |
           osascript -e 'tell application "Ollama Chat" to activate'
           sleep 1
-          osascript -e 'tell application "System Events" to keystroke "In two short sentences, what is Ollama? Use one bullet list."'
+          osascript -e 'tell application "System Events" to keystroke "What is the capital of France? Answer in one short sentence."'
+          osascript -e 'tell application "System Events" to key code 36 using shift down'
+          osascript -e 'tell application "System Events" to keystroke "Thanks!"'
           sleep 1
-          /tmp/shot.sh 3-saisie
+          /tmp/shot.sh 5-saisie-multiligne
           osascript -e 'tell application "System Events" to key code 36'
-          sleep 6
-          /tmp/shot.sh 4-generation
-          sleep 50
+          sleep 12
+          /tmp/shot.sh 6-generation
+          for i in $(seq 1 60); do
+            python3 - <<'PY' && break
+          import json, os, sys
+          path = os.path.expanduser("~/Library/Application Support/OllamaChat/conversations.json")
+          msgs = json.load(open(path))[0]["messages"]
+          last = msgs[-1]
+          sys.exit(0 if last["role"] == "assistant" and (last.get("stats") or last.get("errorText")) else 1)
+          PY
+            sleep 3
+          done
+          sleep 2
           pgrep -x OllamaChat
-          /tmp/shot.sh 5-reponse
+          /tmp/shot.sh 7-reponse
 
-      - name: New conversation, model manager, settings
+      - name: New conversation and dark mode
         continue-on-error: true
         run: |
           osascript -e 'tell application "System Events" to keystroke "n" using command down'
           sleep 2
-          /tmp/shot.sh 6-accueil
-          osascript -e 'tell application "System Events" to keystroke "m" using {command down, shift down}'
-          sleep 2
-          /tmp/shot.sh 7-modeles
-          osascript -e 'tell application "System Events" to key code 53'
-          sleep 1
-          osascript -e 'tell application "System Events" to keystroke "," using command down'
-          sleep 2
-          /tmp/shot.sh 8-reglages
+          /tmp/shot.sh 8-accueil
+          osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
+          read -r X Y <<<"$(osascript -e 'tell application "System Events" to tell process "OllamaChat" to get position of window 1' | tr -d ',')"
+          osascript -e "tell application \"System Events\" to tell process \"OllamaChat\" to click at {$((X + 90)), $((Y + 166))}"
+          sleep 3
+          /tmp/shot.sh 9-sombre
 
       - name: Saved data and diagnostics
         if: always()

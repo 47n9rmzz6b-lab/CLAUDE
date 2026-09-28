@@ -17,7 +17,11 @@ struct ChatView: View {
                     )
                     VStack(spacing: 8) {
                         ConnectionBanner()
-                        ComposerView(text: $draft, forceFocus: false) { store.send($0) }
+                        ComposerView(
+                            text: $draft,
+                            forceFocus: false,
+                            isGeneratingHere: store.generatingID == conversation.id
+                        ) { store.send($0) }
                     }
                     .frame(maxWidth: 780)
                     .padding(.horizontal, 24)
@@ -50,7 +54,7 @@ private struct WelcomeView: View {
                     .font(.system(size: 34, design: .serif))
             }
             VStack(spacing: 10) {
-                ComposerView(text: $draft, forceFocus: true) { store.send($0) }
+                ComposerView(text: $draft, forceFocus: true, isGeneratingHere: false) { store.send($0) }
                 ConnectionBanner()
             }
             .frame(maxWidth: 680)

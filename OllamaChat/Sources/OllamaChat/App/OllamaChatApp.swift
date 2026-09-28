@@ -18,7 +18,7 @@ struct OllamaChatApp: App {
                 .tint(Theme.accent)
                 .frame(minWidth: 760, minHeight: 500)
         }
-        .defaultSize(width: 1100, height: 760)
+        .defaultSize(Self.defaultWindowSize)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Nouvelle conversation") { store.newConversation() }
@@ -45,6 +45,16 @@ struct OllamaChatApp: App {
                 .environment(store)
                 .tint(Theme.accent)
         }
+    }
+
+    /// Taille initiale de la fenêtre, réduite sur les petits écrans pour qu’elle y tienne entière :
+    /// une fenêtre plus grande que l’écran, redimensionnée par le système, s’affiche mal au lancement.
+    private static var defaultWindowSize: CGSize {
+        let visible = NSScreen.main?.visibleFrame.size ?? CGSize(width: 1440, height: 900)
+        return CGSize(
+            width: min(1100, (visible.width * 0.92).rounded()),
+            height: min(760, (visible.height * 0.92).rounded())
+        )
     }
 }
 

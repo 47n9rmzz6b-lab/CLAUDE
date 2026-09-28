@@ -1,14 +1,19 @@
+import AppKit
 import SwiftUI
 
-/// Fil de la conversation. Pendant la génération, la vue suit la fin de la réponse,
-/// sauf si l’utilisateur est remonté dans l’historique (un bouton permet alors de revenir en bas).
+/// Fil de la conversation. Pendant la génération, la vue suit la fin de la réponse, sauf si
+/// l’utilisateur remonte dans l’historique ; un bouton permet alors de revenir en bas.
 struct MessageListView: View {
     let conversation: Conversation
     let streamingMessageID: UUID?
     let serif: Bool
 
+    /// Suivre la fin du fil. Seul un défilement vers le haut fait par l’utilisateur l’interrompt :
+    /// un bloc qui grandit d’un coup (tableau, code) ne doit pas faire perdre le fil.
+    @State private var followsBottom = true
     @State private var isAtBottom = true
     @State private var viewportHeight: CGFloat = 0
+    @State private var scrollMonitor: Any?
 
     private let bottomID = "bottom"
     private let scrollSpace = "messageScroll"
@@ -61,28 +66,29 @@ struct MessageListView: View {
             )
             .onPreferenceChange(BottomOffsetKey.self) { bottom in
                 guard viewportHeight > 0 else { return }
-                isAtBottom = bottom <= viewportHeight + 80
+                isAtBottom = bottom <= viewportHeight + 40
+                if isAtBottom { followsBottom = true }
             }
             .onAppear {
-                proxy.scrollTo(bottomID, anchor: .bottom)
+                startWatchingUserScroll()
+                scrollToBottom(proxy)
+            }
+            .onDisappear {
+                if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
+                scrollMonitor = nil
             }
             .onChange(of: conversation.messages.count) {
-                isAtBottom = true
-                withAnimation(.easeOut(duration: 0.2)) {
-                    proxy.scrollTo(bottomID, anchor: .bottom)
-                }
+                followsBottom = true
+                scrollToBottom(proxy, animated: true)
             }
             .onChange(of: lastMessageLength) {
-                if isAtBottom {
-                    proxy.scrollTo(bottomID, anchor: .bottom)
-                }
+                if followsBottom { scrollToBottom(proxy) }
             }
             .overlay(alignment: .bottom) {
-                if !isAtBottom {
+                if !isAtBottom && !followsBottom {
                     Button {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            proxy.scrollTo(bottomID, anchor: .bottom)
-                        }
+                        followsBottom = true
+                        scrollToBottom(proxy, animated: true)
                     } label: {
                         Image(systemName: "arrow.down")
                             .font(.system(size: 13, weight: .semibold))
@@ -96,6 +102,32 @@ struct MessageListView: View {
                     .help("Aller à la fin")
                 }
             }
+        }
+    }
+
+    /// Défile jusqu’en bas une fois la mise en page faite : les lignes qui viennent
+    /// d’apparaître ou de grandir ont alors leur hauteur définitive.
+    private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = false) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(16))
+            if animated {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    proxy.scrollTo(bottomID, anchor: .bottom)
+                }
+            } else {
+                proxy.scrollTo(bottomID, anchor: .bottom)
+            }
+        }
+    }
+
+    private func startWatchingUserScroll() {
+        guard scrollMonitor == nil else { return }
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+            // Défilement vers le début du fil (molette, trackpad) : on arrête de suivre la réponse.
+            if event.scrollingDeltaY > 0 {
+                followsBottom = false
+            }
+            return event
         }
     }
 }

@@ -7,6 +7,8 @@ struct ComposerView: View {
     @Binding var text: String
     /// Prend le focus clavier même si la liste des conversations l’avait.
     let forceFocus: Bool
+    /// La réponse en cours de génération appartient à cette conversation (bouton « Arrêter »).
+    let isGeneratingHere: Bool
     let onSend: (String) -> Void
 
     @State private var editorHeight: CGFloat = 20
@@ -35,7 +37,7 @@ struct ComposerView: View {
             HStack(spacing: 10) {
                 ModelPicker()
                 Spacer()
-                if store.isGenerating {
+                if isGeneratingHere {
                     Button {
                         store.stopGeneration()
                     } label: {
