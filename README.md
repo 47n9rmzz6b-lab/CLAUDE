@@ -46,3 +46,7 @@ ffmpeg -i voix.m4a -i musique.mp3 \
 ## Détails techniques
 
 Un seul fichier, `index.html`, sans dépendance à installer ni étape de compilation. Le décodage passe par l’API Web Audio du navigateur, le mixage est fait en JavaScript et l’encodage MP3 par [lamejs](https://github.com/zhuker/lamejs) (LGPL-3.0), chargé à la demande. La partie comprise entre les marqueurs `artifact:start` et `artifact:end` est celle publiée comme artefact Claude.
+
+## Autre projet du dépôt
+
+- [**Ollama Chat**](OllamaChat/) : une application Mac pour discuter avec les modèles Ollama dans une fenêtre semblable à celle de l’application Claude.

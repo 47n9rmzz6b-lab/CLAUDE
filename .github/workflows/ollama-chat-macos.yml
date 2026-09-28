@@ -1,0 +1,50 @@
+name: Ollama Chat (macOS)
+
+on:
+  push:
+    paths:
+      - "OllamaChat/**"
+      - ".github/workflows/ollama-chat-macos.yml"
+  pull_request:
+    paths:
+      - "OllamaChat/**"
+      - ".github/workflows/ollama-chat-macos.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    # Une PR ouverte depuis ce dépôt est déjà compilée par l’événement push : on évite le doublon.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: OllamaChat
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versions
+        run: |
+          sw_vers
+          swift --version
+
+      - name: Tests
+        run: swift test
+
+      - name: Construire l’application (Apple Silicon + Intel)
+        run: UNIVERSAL=1 ./scripts/build-app.sh
+
+      - name: Vérifier le bundle
+        run: |
+          lipo -info "build/Ollama Chat.app/Contents/MacOS/OllamaChat"
+          plutil -lint "build/Ollama Chat.app/Contents/Info.plist"
+          codesign --verify --verbose "build/Ollama Chat.app"
+          ls -la "build/Ollama Chat.app/Contents/Resources"
+
+      - name: Archiver
+        run: ditto -c -k --keepParent "build/Ollama Chat.app" "build/Ollama-Chat.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ollama-Chat-macOS
+          path: OllamaChat/build/Ollama-Chat.zip
+          if-no-files-found: error
