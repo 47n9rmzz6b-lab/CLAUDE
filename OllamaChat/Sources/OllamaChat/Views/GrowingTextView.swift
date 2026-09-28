@@ -121,9 +121,10 @@ private final class ComposerTextView: NSTextView {
         super.viewDidMoveToWindow()
         guard let window, !didAttemptFocus else { return }
         didAttemptFocus = true
-        // Ne pas voler le focus à la liste des conversations quand on la parcourt au clavier.
-        if UserDefaults.standard.bool(forKey: "debugNoFocus") { return } // SMOKE-DEBUG
-        if forceFocus || !(window.firstResponder is NSTableView) {
+        // Après un clic sur une conversation, on peut écrire tout de suite ; mais on laisse le focus
+        // à la liste des conversations quand on la parcourt au clavier (flèches).
+        let browsingListWithKeyboard = window.firstResponder is NSTableView && NSApp.currentEvent?.type == .keyDown
+        if forceFocus || !browsingListWithKeyboard {
             window.makeFirstResponder(self)
         }
     }

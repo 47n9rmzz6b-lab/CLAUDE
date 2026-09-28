@@ -109,31 +109,15 @@ jobs:
           SH
           chmod +x /tmp/winpos.sh
 
-      - name: Launch variants (without Ollama)
+      - name: Launch without Ollama
         run: |
-          ID=11111111-2222-3333-4444-555555555555
-          variant() {
-            local name="$1"; shift
-            cp /tmp/seed.json "$HOME/Library/Application Support/OllamaChat/conversations.json"
-            defaults delete com.ollamachat.desktop lastConversationID 2>/dev/null || true
-            open "build/Ollama Chat.app" --args "$@"
-            sleep 4
-            /tmp/shot.sh "v-$name-a"
-            sleep 5
-            /tmp/shot.sh "v-$name-b"
-            osascript -e 'tell application "Ollama Chat" to quit' || true
-            sleep 2
-            pkill -x OllamaChat || true
-            sleep 1
-          }
-          variant base -lastConversationID $ID -debugDumpViews YES
-          variant norestore
-          variant defer -lastConversationID $ID -debugDeferRestore YES
-          variant nofocus -lastConversationID $ID -debugNoFocus YES
-          variant noscroll -lastConversationID $ID -debugNoInitialScroll YES
-          variant nosubtitle -lastConversationID $ID -debugNoSubtitle YES
-          variant noactivate -lastConversationID $ID -debugNoActivate YES
-          cp /tmp/ollamachat-views.txt "$GITHUB_WORKSPACE/OllamaChat/.smoke/views.txt" || true
+          open "build/Ollama Chat.app" --args -lastConversationID 11111111-2222-3333-4444-555555555555
+          sleep 6
+          pgrep -x OllamaChat
+          /tmp/shot.sh 1-sans-ollama
+          osascript -e 'tell application "System Events" to keystroke "n" using command down'
+          sleep 2
+          /tmp/shot.sh 2-accueil-sans-ollama
 
       - name: Start Ollama with a small model
         run: |
@@ -143,38 +127,25 @@ jobs:
           ollama pull qwen3:0.6b > /dev/null
           ollama list
           curl -s http://localhost:11434/api/generate -d '{"model":"qwen3:0.6b","prompt":"hi","stream":false,"think":false}' > /dev/null || true
+          sleep 6
 
-      - name: Launch, switch conversations
+      - name: Click a conversation, type right away, follow the reply
         continue-on-error: true
         run: |
-          cp /tmp/seed.json "$HOME/Library/Application Support/OllamaChat/conversations.json"
-          open "build/Ollama Chat.app" --args -lastConversationID 11111111-2222-3333-4444-555555555555
-          sleep 8
-          /tmp/shot.sh 10-lancement
           read -r X Y <<<"$(/tmp/winpos.sh)"
           echo "window at $X $Y"
-          /tmp/mouse click $((X + 90)) $((Y + 226))
-          sleep 2
-          /tmp/shot.sh 11-autre-conversation
           /tmp/mouse click $((X + 90)) $((Y + 166))
           sleep 2
-          /tmp/shot.sh 12-retour
-
-      - name: Send, follow, scroll up
-        continue-on-error: true
-        run: |
-          read -r X Y <<<"$(/tmp/winpos.sh)"
-          osascript -e 'tell application "Ollama Chat" to activate'
-          sleep 1
           osascript -e 'tell application "System Events" to keystroke "List five French cities, one per line, with one short sentence about each."'
+          osascript -e 'tell application "System Events" to key code 36 using shift down'
+          osascript -e 'tell application "System Events" to keystroke "Thanks!"'
+          sleep 1
+          /tmp/shot.sh 3-saisie
           osascript -e 'tell application "System Events" to key code 36'
-          sleep 4
-          /tmp/shot.sh 13-envoye
-          sleep 30
-          /tmp/shot.sh 14-suivi
-          /tmp/mouse scroll $((X + 600)) $((Y + 300)) 8
-          sleep 6
-          /tmp/shot.sh 15-remonte
+          sleep 5
+          /tmp/shot.sh 4-envoye
+          sleep 25
+          /tmp/shot.sh 5-suivi
           for i in $(seq 1 60); do
             python3 - <<'PY' && break
           import json, os, sys
@@ -184,19 +155,24 @@ jobs:
           PY
             sleep 3
           done
-          /tmp/shot.sh 16-fin
+          sleep 2
+          /tmp/shot.sh 6-fin
 
-      - name: New conversation and dark mode
+      - name: Keyboard navigation in the sidebar, dark mode
         continue-on-error: true
         run: |
-          osascript -e 'tell application "System Events" to keystroke "n" using command down'
-          sleep 2
-          /tmp/shot.sh 17-accueil
-          osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
           read -r X Y <<<"$(/tmp/winpos.sh)"
+          # Clic sur la conversation déjà sélectionnée : la liste prend le focus, puis flèche bas.
           /tmp/mouse click $((X + 90)) $((Y + 166))
+          sleep 1
+          osascript -e 'tell application "System Events" to key code 125'
+          sleep 2
+          /tmp/shot.sh 7-clavier
+          osascript -e 'tell application "System Events" to key code 126'
+          sleep 1
+          osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
           sleep 3
-          /tmp/shot.sh 18-sombre
+          /tmp/shot.sh 8-sombre
 
       - name: Saved data and diagnostics
         if: always()

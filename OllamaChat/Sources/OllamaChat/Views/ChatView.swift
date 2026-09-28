@@ -35,7 +35,7 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.background)
         .navigationTitle(store.selectedConversation?.title ?? "Nouvelle conversation")
-        .navigationSubtitle(UserDefaults.standard.bool(forKey: "debugNoSubtitle") ? "" : store.currentModel) // SMOKE-DEBUG
+        .navigationSubtitle(store.currentModel)
     }
 }
 
@@ -112,10 +112,12 @@ struct ConnectionBanner: View {
             Image(systemName: icon)
                 .font(.system(size: 16))
                 .foregroundStyle(tint)
+            // Pas de .fixedSize(vertical:) ici : pour calculer la hauteur minimale de la fenêtre,
+            // SwiftUI propose une largeur quasi nulle, et le texte replié à un caractère par ligne
+            // rendait toute l’interface plus haute que la fenêtre.
             Text(message)
                 .font(.callout)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
             actions()
         }
         .padding(12)

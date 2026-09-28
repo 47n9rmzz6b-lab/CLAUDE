@@ -71,9 +71,7 @@ struct MessageListView: View {
             }
             .onAppear {
                 startWatchingUserScroll()
-                if !UserDefaults.standard.bool(forKey: "debugNoInitialScroll") { // SMOKE-DEBUG
-                    scrollToBottom(proxy)
-                }
+                scrollToBottom(proxy)
             }
             .onDisappear {
                 if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }

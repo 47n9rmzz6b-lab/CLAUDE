@@ -18,12 +18,6 @@ struct ContentView: View {
                 .environment(store)
         }
         .task {
-            // SMOKE-DEBUG
-            if UserDefaults.standard.bool(forKey: "debugDeferRestore"),
-               let last = UserDefaults.standard.string(forKey: SettingsKey.lastConversationID) {
-                try? await Task.sleep(for: .milliseconds(500))
-                store.selectedID = UUID(uuidString: last)
-            }
             await store.monitorConnection()
         }
         .onChange(of: store.selectedID) {
