@@ -114,65 +114,27 @@ jobs:
           open "build/Ollama Chat.app" --args -lastConversationID 11111111-2222-3333-4444-555555555555
           sleep 6
           pgrep -x OllamaChat
-          /tmp/shot.sh 1-sans-ollama
-          osascript -e 'tell application "System Events" to keystroke "n" using command down'
-          sleep 2
-          /tmp/shot.sh 2-accueil-sans-ollama
+          /tmp/shot.sh 1-lancement
 
-      - name: Start Ollama with a small model
-        run: |
-          brew install ollama >/dev/null
-          (ollama serve > /tmp/ollama.log 2>&1 &)
-          sleep 4
-          ollama pull qwen3:0.6b > /dev/null
-          ollama list
-          curl -s http://localhost:11434/api/generate -d '{"model":"qwen3:0.6b","prompt":"hi","stream":false,"think":false}' > /dev/null || true
-          sleep 6
-
-      - name: Click a conversation, type right away, follow the reply
+      - name: Keyboard navigation keeps the focus in the sidebar, a click moves it to the composer
         continue-on-error: true
         run: |
           read -r X Y <<<"$(/tmp/winpos.sh)"
-          echo "window at $X $Y"
-          /tmp/mouse click $((X + 90)) $((Y + 166))
-          sleep 2
-          osascript -e 'tell application "System Events" to keystroke "List five French cities, one per line, with one short sentence about each."'
-          osascript -e 'tell application "System Events" to key code 36 using shift down'
-          osascript -e 'tell application "System Events" to keystroke "Thanks!"'
-          sleep 1
-          /tmp/shot.sh 3-saisie
-          osascript -e 'tell application "System Events" to key code 36'
-          sleep 5
-          /tmp/shot.sh 4-envoye
-          sleep 25
-          /tmp/shot.sh 5-suivi
-          for i in $(seq 1 60); do
-            python3 - <<'PY' && break
-          import json, os, sys
-          path = os.path.expanduser("~/Library/Application Support/OllamaChat/conversations.json")
-          last = json.load(open(path))[0]["messages"][-1]
-          sys.exit(0 if last["role"] == "assistant" and (last.get("stats") or last.get("errorText")) else 1)
-          PY
-            sleep 3
-          done
-          sleep 2
-          /tmp/shot.sh 6-fin
-
-      - name: Keyboard navigation in the sidebar, dark mode
-        continue-on-error: true
-        run: |
-          read -r X Y <<<"$(/tmp/winpos.sh)"
-          # Clic sur la conversation déjà sélectionnée : la liste prend le focus, puis flèche bas.
+          # Clic sur la conversation déjà sélectionnée : la liste prend le focus.
           /tmp/mouse click $((X + 90)) $((Y + 166))
           sleep 1
           osascript -e 'tell application "System Events" to key code 125'
           sleep 2
-          /tmp/shot.sh 7-clavier
+          /tmp/shot.sh 2-fleche-bas
           osascript -e 'tell application "System Events" to key code 126'
+          sleep 2
+          /tmp/shot.sh 3-fleche-haut
+          # Clic sur l'autre conversation : on doit pouvoir écrire tout de suite.
+          /tmp/mouse click $((X + 90)) $((Y + 226))
+          sleep 2
+          osascript -e 'tell application "System Events" to keystroke "Texte tape apres un clic"'
           sleep 1
-          osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
-          sleep 3
-          /tmp/shot.sh 8-sombre
+          /tmp/shot.sh 4-clic-puis-saisie
 
       - name: Saved data and diagnostics
         if: always()

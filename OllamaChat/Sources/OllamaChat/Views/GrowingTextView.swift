@@ -122,8 +122,11 @@ private final class ComposerTextView: NSTextView {
         guard let window, !didAttemptFocus else { return }
         didAttemptFocus = true
         // Après un clic sur une conversation, on peut écrire tout de suite ; mais on laisse le focus
-        // à la liste des conversations quand on la parcourt au clavier (flèches).
-        let browsingListWithKeyboard = window.firstResponder is NSTableView && NSApp.currentEvent?.type == .keyDown
+        // à la liste des conversations quand on la parcourt au clavier (flèches). La vue peut n’être
+        // créée qu’une fois la touche relâchée : keyUp compte donc aussi.
+        let eventType = NSApp.currentEvent?.type
+        let browsingListWithKeyboard = window.firstResponder is NSTableView
+            && (eventType == .keyDown || eventType == .keyUp)
         if forceFocus || !browsingListWithKeyboard {
             window.makeFirstResponder(self)
         }
