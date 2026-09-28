@@ -3,6 +3,7 @@
 import http.client
 import http.server
 import json
+import socketserver
 import os
 import threading
 import time
@@ -148,4 +149,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 save_state()
-http.server.ThreadingHTTPServer(("127.0.0.1", 11435), Handler).serve_forever()
+class Server(http.server.ThreadingHTTPServer):
+    def server_bind(self):
+        # Sans socket.getfqdn() : sa recherche de nom déclenche l'alerte « réseau local » de macOS.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = "localhost", self.server_address[1]
+
+
+Server(("127.0.0.1", 11435), Handler).serve_forever()

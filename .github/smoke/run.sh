@@ -20,7 +20,7 @@ esc() { key 'key code 53'; }
 activate() { osascript -e 'tell application "Ollama Chat" to activate' >/dev/null; sleep 1; }
 ax() { /tmp/ax "$@"; }
 state() { python3 -c "import json,sys;print(json.load(open('/tmp/proxy_state.json'))[sys.argv[1]])" "$1" 2>/dev/null || echo 0; }
-phase() { echo; echo "=== $* ==="; echo "$1 $(state seq)" >> /tmp/phases.txt; }
+phase() { echo; echo "=== $* ==="; echo "$1 $(state seq)" >> /tmp/phases.txt; allow_prompts; }
 LAST_CHAT=0
 arm() { LAST_CHAT=$(state chat); }
 # Attend une nouvelle requête /api/chat, puis 6 s sans aucune requête en cours (réponse, titre, mémoire).
@@ -38,14 +38,23 @@ waitidle() {
   done
   echo "  terminé en $(( $(date +%s) - start )) s"
 }
-send() { paste "$1"; arm; enter; waitidle "${2:-240}"; }
+# Alertes système (réseau local, reconnaissance vocale, micro) : validées pour ne pas masquer l'app.
+allow_prompts() { /tmp/ax allow; }
+close_settings() { AX_WINDOW=com_apple_SwiftUI_Settings_window /tmp/ax close >/dev/null; sleep 0.5; }
+# Fenêtre principale au premier plan, sans réglages, feuille, menu ni bulle ouverts.
+reset_ui() { allow_prompts; close_settings; activate; esc; }
+# Clic dans la zone de saisie (la dernière zone de texte de la fenêtre principale) avant de taper.
+focus_composer() { AX_WINDOW=main /tmp/ax click "" AXTextArea -1 >/dev/null || echo "  zone de saisie introuvable"; sleep 0.3; }
+send() { focus_composer; paste "$1"; arm; enter; waitidle "${2:-240}"; }
+# Envoi dans le champ qui a déjà le focus (saisie rapide).
+send_here() { paste "$1"; arm; enter; waitidle "${2:-240}"; }
 # État des boutons de la zone de saisie, lu dans leur bulle d'aide.
 web_on() { ax find "Recherche web activée" >/dev/null; }
 thinking_on() { ax find "Le modèle réfléchit avant de répondre" >/dev/null; }
 set_web() { if [ "$1" = on ]; then web_on || key 'keystroke "i" using {command down, option down}'; else web_on && key 'keystroke "i" using {command down, option down}'; fi; web_on && echo "  web : activé" || echo "  web : désactivé"; }
 choose_model() {
-  ax click "Modèle utilisé pour cette conversation" >/dev/null; sleep 1
-  ax press "$1" AXMenuItem || { key "keystroke \"$1\""; enter; }
+  ax click "Modèle utilisé pour cette conversation" >/dev/null; sleep 1.5
+  ax press "$1" AXMenuItem || { ax dump > "$SMOKE/ax-menu-modeles.txt"; esc; }
   sleep 1
   echo "  modèle : $(ax find "Modèle utilisé pour cette conversation" | head -1)"
 }
@@ -69,31 +78,34 @@ sleep 2
 phase lancement "Lancement"
 open "$APP"
 sleep 8
+allow_prompts
 pgrep -x OllamaChat >/dev/null && echo "  app lancée" || echo "  L'APP NE TOURNE PAS"
 ax dump > "$SMOKE/ax-accueil.txt"
 head -3 "$SMOKE/ax-accueil.txt"
 shot 01-accueil
 
 phase reglages "Réglages › Personnalisation (saisie à l'écran)"
+activate
 key 'keystroke "," using command down'
 sleep 2
-ax click "=Personnalisation"
+allow_prompts
+ax click "=Personnalisation" AXButton
 sleep 1.5
-# On ne colle que si la zone a été trouvée : sinon le texte irait dans l'adresse du serveur.
-if AX_WINDOW=Personnalisation ax click "" AXTextArea; then
+AX_WINDOW=com_apple_SwiftUI_Settings_window ax dump > "$SMOKE/ax-personnalisation.txt"
+# On ne colle que si la zone a été trouvée : sinon le texte irait ailleurs (l'adresse du serveur…).
+if AX_WINDOW=Personnalisation ax click "" AXTextArea 0; then
   sleep 0.5
   paste "Je m'appelle Camille. Je suis infirmière à Lyon et j'ai un Mac mini M4."
   sleep 1
 else
-  AX_WINDOW="" ax dump > "$SMOKE/ax-reglages-echec.txt"
+  defaults write com.ollamachat.desktop aboutMe -string "Je m'appelle Camille (réglage écrit par le test)."
 fi
 shot 02-reglages-personnalisation
-key 'keystroke "w" using command down'
-sleep 1
+close_settings
 echo "  aboutMe = $(defaults read com.ollamachat.desktop aboutMe 2>/dev/null)"
 
 phase reflexion "Mode raisonnement, durée de réflexion, titre automatique"
-activate
+reset_ui
 key 'keystroke "n" using command down'
 thinking_on && echo "  réflexion : activée" || echo "  réflexion : désactivée"
 send "Combien font 17 fois 23 ? Réponds en une phrase." 300
@@ -122,6 +134,7 @@ waitidle 240
 shot 07-verification
 
 phase edition "Modifier le dernier message (↑ dans la zone vide)"
+focus_composer
 key 'key code 126'
 sleep 1.5
 shot 08-edition
@@ -133,6 +146,7 @@ waitidle 240
 shot 09-apres-edition
 
 phase memoire "Mémoire : « Retiens que… »"
+reset_ui
 key 'keystroke "n" using command down'
 send "Retiens que je travaille comme infirmière de nuit à Lyon."
 shot 10-memoire-commande
@@ -148,12 +162,14 @@ send "Oublie que je travaille de nuit."
 cp "$DATA/memories.json" "$SMOKE/memoires-apres-oublie.json" 2>/dev/null
 
 phase web-outils "Recherche web par outils (qwen3)"
+reset_ui
 key 'keystroke "n" using command down'
 set_web on
 send "Quelle est la météo à Lyon aujourd'hui ? Cherche sur le web et cite ta source." 360
 shot 12-recherche-web
 
 phase vision "Image avec un modèle de vision (moondream)"
+reset_ui
 key 'keystroke "n" using command down'
 set_web off
 choose_model moondream
@@ -169,6 +185,7 @@ send "Quelle est la météo à Lyon aujourd'hui ?" 360
 shot 15-recherche-prealable
 
 phase documents "Documents (texte, PDF, rapport long indexé)"
+reset_ui
 key 'keystroke "n" using command down'
 set_web off
 choose_model qwen3
@@ -194,6 +211,7 @@ send "Quel est le mot de passe du wifi de l'atelier ?" 360
 shot 20-docx-reponse
 
 phase export "Export Markdown (⇧⌘E)"
+reset_ui
 touch /tmp/export.marker
 sleep 1
 key 'keystroke "e" using {command down, shift down}'
@@ -211,17 +229,18 @@ sleep 1.5
 key 'key code 49 using option down'
 sleep 1.5
 shot 22-saisie-rapide
-send "Dis bonjour en une phrase." 240
+send_here "Dis bonjour en une phrase." 240
 shot 23-apres-saisie-rapide
 
 phase modeles "Gestion des modèles (⇧⌘M)"
-activate
+reset_ui
 key 'keystroke "m" using {command down, shift down}'
 sleep 2
 shot 24-modeles
 esc
 
 phase reglages-onglets "Onglets des réglages"
+reset_ui
 key 'keystroke "," using command down'
 sleep 2
 number=25
@@ -238,20 +257,24 @@ for entry in "Général:general" "Génération:generation" "Personnalisation:per
   number=$((number + 1))
 done
 ax dump > "$SMOKE/ax-reglages.txt"
-key 'keystroke "w" using command down'
+close_settings
 
 phase dictee "Dictée"
-activate
+reset_ui
 ax click "Dicter un message"
 sleep 4
 shot 32-dictee
-esc
-sleep 2
+allow_prompts
+sleep 3
+allow_prompts
+sleep 3
 shot 33-dictee-apres
+AX_WINDOW=main ax find "" AXStaticText | grep -i "micro\|dict\|reconnaissance" || true
 ax click "Arrêter la dictée" >/dev/null 2>&1
 pgrep -x OllamaChat >/dev/null && echo "  app toujours ouverte" || echo "  L'APP S'EST FERMÉE"
 
 phase sombre "Mode sombre"
+reset_ui
 title=$(python3 -c "
 import json, os
 for c in json.load(open(os.path.expanduser('~/Library/Application Support/OllamaChat/conversations.json'))):
@@ -278,5 +301,6 @@ pgrep -x OllamaChat >/dev/null && echo "  relancée" || echo "  L'APP NE TOURNE 
 echo "  conversations avant : $count_before, après : $(python3 -c "import json,os; print(len(json.load(open(os.path.expanduser('~/Library/Application Support/OllamaChat/conversations.json')))))")"
 osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to false'
 
+echo "  adresse du serveur : $(defaults read com.ollamachat.desktop serverURL 2>/dev/null)"
 echo; echo "== Rapport"
 python3 "$TOOLS/report.py" "$SMOKE"

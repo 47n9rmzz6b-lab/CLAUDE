@@ -2,6 +2,7 @@
 """Faux serveur SearXNG (port 8765) : résultats fixes et pages de test, requêtes enregistrées."""
 import http.server
 import json
+import socketserver
 import time
 import urllib.parse
 
@@ -59,4 +60,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-http.server.ThreadingHTTPServer(("127.0.0.1", 8765), Handler).serve_forever()
+class Server(http.server.ThreadingHTTPServer):
+    def server_bind(self):
+        # Sans socket.getfqdn() : sa recherche de nom déclenche l'alerte « réseau local » de macOS.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = "localhost", self.server_address[1]
+
+
+Server(("127.0.0.1", 8765), Handler).serve_forever()

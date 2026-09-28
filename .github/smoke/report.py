@@ -124,7 +124,7 @@ def first(items):
 
 # Réglages › Personnalisation
 about = subprocess.run(["defaults", "read", "com.ollamachat.desktop", "aboutMe"], capture_output=True, text=True).stdout.strip()
-check("Réglages : « À propos de moi » saisi à l'écran", "Camille" in about, repr(about[:80]))
+check("Réglages : « À propos de moi » saisi à l'écran", about.startswith("Je m'appelle Camille. Je suis infirmière"), repr(about[:80]))
 
 # Mode raisonnement
 r = first(chats("reflexion"))

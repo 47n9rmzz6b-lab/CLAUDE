@@ -4,8 +4,12 @@
 //   ax click <texte> [rôle] [n]  clic de souris au centre du n-ième élément trouvé
 //   ax press <texte> [rôle] [n]  action AXPress
 //   ax wait <texte> [secondes]   attend qu’un élément apparaisse
+//   ax close                     ferme les fenêtres choisies par AX_WINDOW
+//   ax focused                   élément qui a le focus clavier
+//   ax allow                     valide les alertes système (réseau local, micro…) des autres processus
 // <texte> : partie d’un libellé, sans tenir compte des accents ni de la casse ; « =texte » : libellé exact.
-// Rôle « - » : tous les rôles. AX_WINDOW=<texte> : seulement les fenêtres dont le titre contient ce texte.
+// Rôle « - » : tous les rôles. n < 0 : en partant de la fin.
+// AX_WINDOW=<texte> : seulement les fenêtres dont le titre ou l’identifiant contient ce texte.
 import AppKit
 import ApplicationServices
 
@@ -56,18 +60,29 @@ func collect(_ element: AXUIElement, depth: Int, into nodes: inout [Node]) {
     }
 }
 
-func allNodes() -> [Node] {
+func appElement() -> AXUIElement? {
     guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: "com.ollamachat.desktop").first else {
         print("Ollama Chat ne tourne pas")
-        return []
+        return nil
     }
     let root = AXUIElementCreateApplication(app.processIdentifier)
+    AXUIElementSetMessagingTimeout(root, 3)
+    return root
+}
+
+func windowMatches(_ window: AXUIElement, _ filter: String) -> Bool {
+    let names = [text(window, "AXTitle") ?? "", text(window, "AXIdentifier") ?? ""]
+    return names.contains { $0.localizedCaseInsensitiveContains(filter) }
+}
+
+func allNodes() -> [Node] {
+    guard let root = appElement() else { return [] }
     let filter = ProcessInfo.processInfo.environment["AX_WINDOW"] ?? ""
     var result: [Node] = []
     for child in attribute(root, "AXChildren") as? [AXUIElement] ?? [] {
         let role = text(child, "AXRole") ?? ""
         if role == "AXMenuBar" { continue }
-        if !filter.isEmpty, role == "AXWindow", !(text(child, "AXTitle") ?? "").localizedCaseInsensitiveContains(filter) { continue }
+        if !filter.isEmpty, role == "AXWindow", !windowMatches(child, filter) { continue }
         collect(child, depth: 0, into: &result)
     }
     return result
@@ -126,7 +141,7 @@ guard let command = arguments.first else {
 }
 let needle = arguments.count > 1 ? arguments[1] : ""
 let role = arguments.count > 2 ? arguments[2] : nil
-let index = arguments.count > 3 ? Int(arguments[3]) ?? 0 : 0
+let requestedIndex = arguments.count > 3 ? Int(arguments[3]) ?? 0 : 0
 
 switch command {
 case "dump":
@@ -140,7 +155,8 @@ case "find":
     exit(found.isEmpty ? 1 : 0)
 case "click", "press":
     let found = matches(needle, role: role)
-    guard index < found.count else {
+    let index = requestedIndex < 0 ? found.count + requestedIndex : requestedIndex
+    guard index >= 0, index < found.count else {
         print("introuvable : \(needle)")
         exit(1)
     }
@@ -167,6 +183,42 @@ case "wait":
     }
     print("toujours absent : \(needle)")
     exit(1)
+case "close":
+    let filter = ProcessInfo.processInfo.environment["AX_WINDOW"] ?? ""
+    guard !filter.isEmpty, let root = appElement() else { exit(64) }
+    var closed = 0
+    for window in attribute(root, "AXWindows") as? [AXUIElement] ?? [] where windowMatches(window, filter) {
+        if let button = attribute(window, "AXCloseButton"), CFGetTypeID(button) == AXUIElementGetTypeID() {
+            AXUIElementPerformAction(button as! AXUIElement, "AXPress" as CFString)
+            closed += 1
+        }
+    }
+    print("fenêtres fermées : \(closed)")
+case "focused":
+    guard let root = appElement(), let focused = attribute(root, "AXFocusedUIElement"),
+          CFGetTypeID(focused) == AXUIElementGetTypeID() else {
+        print("aucun")
+        exit(1)
+    }
+    var nodes: [Node] = []
+    let element = focused as! AXUIElement
+    nodes.append(Node(element: element, depth: 0, role: text(element, "AXRole") ?? "?", labels: [text(element, "AXDescription") ?? "", text(element, "AXHelp") ?? ""].filter { !$0.isEmpty }, frame: frame(of: element)))
+    print(describe(nodes[0]))
+case "allow":
+    // Alertes affichées par d’autres processus (autorisations de macOS) : bouton « Allow » ou « OK ».
+    for app in NSWorkspace.shared.runningApplications where app.bundleIdentifier != "com.ollamachat.desktop" {
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(root, 1)
+        for window in attribute(root, "AXWindows") as? [AXUIElement] ?? [] {
+            var nodes: [Node] = []
+            collect(window, depth: 0, into: &nodes)
+            let texts = nodes.filter { $0.role == "AXStaticText" }.map(\.label).joined(separator: " ")
+            guard let button = nodes.first(where: { $0.role == "AXButton" && ["Allow", "Autoriser", "OK"].contains(text($0.element, "AXTitle") ?? "") })
+            else { continue }
+            AXUIElementPerformAction(button.element, "AXPress" as CFString)
+            print("alerte validée (\(app.localizedName ?? "?")) : \(texts.prefix(160))")
+        }
+    }
 default:
     print("commande inconnue : \(command)")
     exit(64)
